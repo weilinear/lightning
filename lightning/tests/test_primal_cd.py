@@ -444,9 +444,8 @@ def test_primal_l2_svc():
 def test_l1l2_multiclass():
     clf = PrimalLinearSVC(penalty="l1/l2", max_iter=5, C=1.0, random_state=0)
     clf.fit(mult_dense, mult_target)
-    print clf.coef_.shape
-    for i in xrange(clf.coef_.shape[1]):
-        print clf.coef_[:, i]
-    print clf.score(mult_dense, mult_target)
     df = clf.decision_function(mult_dense)
-    #assert_array_almost_equal(clf.errors_, df.T)
+    sel = np.array([df[i, int(mult_target[i])] for i in xrange(df.shape[0])])
+    df -= sel[:, np.newaxis]
+    df = np.exp(df)
+    assert_array_almost_equal(clf.errors_, df.T)
