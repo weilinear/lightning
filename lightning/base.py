@@ -5,6 +5,7 @@ import numpy as np
 
 from sklearn.base import BaseEstimator
 from sklearn.utils import safe_mask
+from sklearn.preprocessing import LabelBinarizer, LabelEncoder
 
 from .predict_fast import predict_alpha, decision_function_alpha
 from .kernel_fast import get_kernel
@@ -40,6 +41,19 @@ class BaseClassifier(BaseEstimator):
     def _get_random_state(self):
         return RandomState(seed=self.random_state)
 
+    def _set_label_transformers(self, y, reencode=False):
+        if reencode:
+            self.label_encoder_ = LabelEncoder()
+            y = self.label_encoder_.fit_transform(y)
+
+        self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
+        self.label_binarizer_.fit(y)
+        self.classes_ = self.label_binarizer_.classes_.astype(np.int32)
+        n_classes = len(self.label_binarizer_.classes_)
+        n_vectors = 1 if n_classes <= 2 else n_classes
+
+        return n_classes, n_vectors
+
 
 class BaseLinearClassifier(BaseClassifier):
 
@@ -48,7 +62,12 @@ class BaseLinearClassifier(BaseClassifier):
 
     def predict(self, X):
         pred = self.decision_function(X)
-        return self.label_binarizer_.inverse_transform(pred, threshold=0)
+        out = self.label_binarizer_.inverse_transform(pred, threshold=0)
+
+        if hasattr(self, "label_encoder_"):
+            out = self.label_encoder_.inverse_transform(out)
+
+        return out
 
 
 class BaseKernelClassifier(BaseClassifier):

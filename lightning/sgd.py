@@ -4,7 +4,6 @@
 import numpy as np
 
 from sklearn.base import ClassifierMixin, clone
-from sklearn.preprocessing import LabelBinarizer, LabelEncoder
 from sklearn.utils import check_random_state
 
 from .base import BaseLinearClassifier, BaseKernelClassifier
@@ -42,17 +41,6 @@ class BaseSGD(object):
         learning_rates = {"constant": 1, "pegasos": 2, "invscaling": 3}
         return learning_rates[self.learning_rate]
 
-    def _set_label_transformers(self, y):
-        if self.multiclass == "natural":
-            self.label_encoder_ = LabelEncoder()
-            y = self.label_encoder_.fit_transform(y)
-
-        self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
-        self.label_binarizer_.fit(y)
-        self.classes_ = self.label_binarizer_.classes_.astype(np.int32)
-        n_classes = len(self.label_binarizer_.classes_)
-        n_vectors = 1 if n_classes <= 2 else n_classes
-        return n_classes, n_vectors
 
 class SGDClassifier(BaseLinearClassifier, BaseSGD, ClassifierMixin):
 
@@ -79,7 +67,8 @@ class SGDClassifier(BaseLinearClassifier, BaseSGD, ClassifierMixin):
         n_samples, n_features = X.shape
         rs = check_random_state(self.random_state)
 
-        n_classes, n_vectors = self._set_label_transformers(y)
+        reencode = self.multiclass == "natural"
+        n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
@@ -153,7 +142,8 @@ class KernelSGDClassifier(BaseKernelClassifier, BaseSGD, ClassifierMixin):
         n_samples, n_features = X.shape
         rs = check_random_state(self.random_state)
 
-        n_classes, n_vectors = self._set_label_transformers(y)
+        reencode = self.multiclass == "natural"
+        n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         self.coef_ = np.zeros((n_vectors, n_samples), dtype=np.float64)
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
