@@ -10,6 +10,7 @@ from sklearn.utils import check_random_state
 from .base import BaseLinearClassifier, BaseKernelClassifier
 
 from .kernel_fast import get_kernel, KernelCache
+from .primal_cd_fast import _primal_cd_l1l2r
 from .primal_cd_fast import _primal_cd_l2r
 from .primal_cd_fast import _primal_cd_l2svm_l2r
 from .primal_cd_fast import _primal_cd_l2svm_l1r
@@ -60,10 +61,8 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 
         X = np.asfortranarray(X, dtype=np.float64)
 
-        self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
-        Y = self.label_binarizer_.fit_transform(y)
-        self.classes_ = self.label_binarizer_.classes_
-        n_vectors = Y.shape[1]
+        reencode = self.penalty == "l1/l2"
+        y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         kernel = get_kernel("linear")
         kcache = KernelCache(kernel, n_samples, 0, 0, self.verbose)
@@ -75,22 +74,31 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 
         indices = np.arange(n_features, dtype=np.int32)
 
-        for i in xrange(n_vectors):
-            if self.penalty == "l1":
-                _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
-                                     X, Y[:, i], indices, kcache, True,
-                                     "permute", 60,
-                                     self.termination, self.nz_coef_upper_bound,
-                                     self.C, self.max_iter, rs, self.tol,
-                                     self.callback, verbose=self.verbose)
-            else:
-                _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               X, None, Y[:, i], indices,
-                               self._get_loss(), kcache, True, False,
-                               "permute", 60,
-                               self.termination, self.nz_coef_upper_bound,
-                               self.C, self.max_iter, rs, self.tol,
-                               self.callback, verbose=self.verbose)
+        if self.penalty == "l1/l2":
+            self.errors_ -= 1
+            _primal_cd_l1l2r(self,
+                             self.coef_, self.errors_,
+                             X, y, indices, kcache, True,
+                             self.C, self.max_iter, rs, self.tol,
+                             self.callback, self.verbose)
+        else:
+            Y = self.label_binarizer_.transform(y)
+            for i in xrange(n_vectors):
+                if self.penalty == "l1":
+                    _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
+                                         X, Y[:, i], indices, kcache, True,
+                                         "permute", 60,
+                                         self.termination, self.nz_coef_upper_bound,
+                                         self.C, self.max_iter, rs, self.tol,
+                                         self.callback, verbose=self.verbose)
+                else:
+                    _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
+                                   X, None, Y[:, i], indices,
+                                   self._get_loss(), kcache, True, False,
+                                   "permute", 60,
+                                   self.termination, self.nz_coef_upper_bound,
+                                   self.C, self.max_iter, rs, self.tol,
+                                   self.callback, verbose=self.verbose)
 
         return self
 

@@ -28,6 +28,7 @@ cdef extern from "math.h":
    double fabs(double)
    double exp(double x)
    double log(double x)
+   double sqrt(double x)
 
 cdef extern from "float.h":
    double DBL_MAX
@@ -775,6 +776,125 @@ def _primal_cd_l2svm_l1r(self,
         print
 
     return w
+
+
+def _primal_cd_l1l2r(self,
+                     np.ndarray[double, ndim=2, mode='c'] w,
+                     np.ndarray[double, ndim=2, mode='c'] b,
+                     X,
+                     np.ndarray[int, ndim=1] y,
+                     np.ndarray[int, ndim=1, mode='c'] index,
+                     KernelCache kcache,
+                     int linear_kernel,
+                     double C,
+                     int max_iter,
+                     RandomState rs,
+                     double tol,
+                     callback,
+                     int verbose):
+
+    cdef Py_ssize_t n_samples = X.shape[0]
+    cdef Py_ssize_t n_features = X.shape[1]
+    cdef Py_ssize_t n_vectors = w.shape[0]
+
+    cdef np.ndarray[double, ndim=2, mode='fortran'] Xf
+    cdef np.ndarray[double, ndim=2, mode='c'] Xc
+
+    if linear_kernel:
+        Xf = X
+    else:
+        Xc = X
+        n_features = index.shape[0]
+
+    cdef int t, s, i, j, k
+    cdef int active_size = n_features
+
+    cdef double* col_data
+    cdef double* col_ro
+    cdef np.ndarray[double, ndim=1, mode='c'] col
+    col = np.zeros(n_samples, dtype=np.float64)
+    col_data = <double*>col.data
+
+    cdef np.ndarray[double, ndim=1, mode='c'] v
+    v = np.zeros(n_vectors, dtype=np.float64)
+
+    cdef np.ndarray[double, ndim=1, mode='c'] Z
+    Z = np.zeros(n_samples, dtype=np.float64)
+
+    cdef double scaling, tmp
+    cdef double Lpp, Lpp_max
+    cdef double L, L_new, R, R_new
+
+    for t in xrange(max_iter):
+        if verbose >= 1:
+            print "\nIteration", t
+
+        rs.shuffle(index[:active_size])
+
+        for s in xrange(active_size):
+            j = index[s]
+
+            if linear_kernel:
+                col_ro = (<double*>Xf.data) + j * n_samples
+            else:
+                kcache.compute_column(Xc, Xc, j, col)
+                col_ro = col_data
+
+            # Compute normalization.
+            for i in xrange(n_samples):
+                Z[i] = 0
+                for k in xrange(n_vectors):
+                    Z[i] += exp(b[k, i] - b[y[i], i])
+
+            # Compute gradient and largest second derivative.
+            Lpp_max = -DBL_MAX
+
+            for k in xrange(n_vectors):
+                v[k] = 0
+
+                Lpp = 0
+                L = 0
+
+                for i in xrange(n_samples):
+                    if y[i] == k:
+                        continue
+
+                    if Z[i] > 0:
+                        tmp = exp(b[k, i] - b[y[i], i])
+                        v[k] += C * tmp * col_ro[i] / Z[i]
+                        Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
+
+                Lpp *= C
+
+                Lpp_max = max(Lpp, Lpp_max)
+
+            Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
+
+            # Compute vector to be projected.
+            for k in xrange(n_vectors):
+                v[k] = w[k, j] - v[k] / Lpp_max
+
+            # Project.
+            scaling = 0
+            for k in xrange(n_vectors):
+                scaling += v[k] * v[k]
+
+            scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
+
+            if scaling < 0:
+                scaling = 0
+
+            for k in xrange(n_vectors):
+                v[k] = scaling * v[k] - w[k, j]
+
+            # Update predictions.
+            for i in xrange(n_samples):
+                for k in xrange(n_vectors):
+                    b[k, i] += v[k] * col_ro[i]
+
+            # Update solution
+            for k in xrange(n_vectors):
+                w[k, j] += v[k]
 
 
 def _primal_cd_l2r(self,

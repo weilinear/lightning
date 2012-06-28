@@ -439,3 +439,14 @@ def test_primal_l2_svc():
         clf.fit(bin_dense, bin_target)
         assert_almost_equal(clf.score(bin_dense, bin_target), 0.945)
         assert_equal(clf.n_support_vectors(), 131)
+
+
+def test_l1l2_multiclass():
+    clf = PrimalLinearSVC(penalty="l1/l2", max_iter=5, C=1.0, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    print clf.coef_.shape
+    for i in xrange(clf.coef_.shape[1]):
+        print clf.coef_[:, i]
+    print clf.score(mult_dense, mult_target)
+    df = clf.decision_function(mult_dense)
+    assert_array_almost_equal(clf.errors_, df.T)

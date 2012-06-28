@@ -68,7 +68,7 @@ class SGDClassifier(BaseLinearClassifier, BaseSGD, ClassifierMixin):
         rs = check_random_state(self.random_state)
 
         reencode = self.multiclass == "natural"
-        n_classes, n_vectors = self._set_label_transformers(y, reencode)
+        y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
@@ -143,7 +143,7 @@ class KernelSGDClassifier(BaseKernelClassifier, BaseSGD, ClassifierMixin):
         rs = check_random_state(self.random_state)
 
         reencode = self.multiclass == "natural"
-        n_classes, n_vectors = self._set_label_transformers(y, reencode)
+        y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         self.coef_ = np.zeros((n_vectors, n_samples), dtype=np.float64)
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)

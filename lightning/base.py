@@ -44,7 +44,7 @@ class BaseClassifier(BaseEstimator):
     def _set_label_transformers(self, y, reencode=False):
         if reencode:
             self.label_encoder_ = LabelEncoder()
-            y = self.label_encoder_.fit_transform(y)
+            y = self.label_encoder_.fit_transform(y).astype(np.int32)
 
         self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
         self.label_binarizer_.fit(y)
@@ -52,7 +52,7 @@ class BaseClassifier(BaseEstimator):
         n_classes = len(self.label_binarizer_.classes_)
         n_vectors = 1 if n_classes <= 2 else n_classes
 
-        return n_classes, n_vectors
+        return y, n_classes, n_vectors
 
 
 class BaseLinearClassifier(BaseClassifier):
