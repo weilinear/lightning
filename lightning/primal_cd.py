@@ -75,7 +75,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         indices = np.arange(n_features, dtype=np.int32)
 
         if self.penalty == "l1/l2":
-            self.errors_ -= 1
+            #self.errors_ -= 1
             _primal_cd_l1l2r(self,
                              self.coef_, self.errors_,
                              X, y, indices, kcache, True,

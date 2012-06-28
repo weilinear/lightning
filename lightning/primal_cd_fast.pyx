@@ -844,7 +844,7 @@ def _primal_cd_l1l2r(self,
             for i in xrange(n_samples):
                 Z[i] = 0
                 for k in xrange(n_vectors):
-                    Z[i] += exp(b[k, i] - b[y[i], i])
+                    Z[i] += b[k, i]
 
             # Compute gradient and largest second derivative.
             Lpp_max = -DBL_MAX
@@ -860,7 +860,7 @@ def _primal_cd_l1l2r(self,
                         continue
 
                     if Z[i] > 0:
-                        tmp = exp(b[k, i] - b[y[i], i])
+                        tmp = b[k, i]
                         v[k] += C * tmp * col_ro[i] / Z[i]
                         Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
 
@@ -890,7 +890,7 @@ def _primal_cd_l1l2r(self,
             # Update predictions.
             for i in xrange(n_samples):
                 for k in xrange(n_vectors):
-                    b[k, i] += v[k] * col_ro[i]
+                    b[k, i] *= exp((v[k] - v[y[i]]) * col_ro[i])
 
             # Update solution
             for k in xrange(n_vectors):
