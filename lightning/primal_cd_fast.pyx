@@ -876,11 +876,11 @@ def _primal_cd_l1l2r(self,
 
                     if Z[i] > 0:
                         tmp = b[k, i]
-                        g[k] += C * tmp * col_ro[i] / Z[i]
+                        g[k] += tmp * col_ro[i] / Z[i]
                         Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
 
+                g[k] *= C
                 Lpp *= C
-
                 Lpp_max = max(Lpp, Lpp_max)
 
             Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
