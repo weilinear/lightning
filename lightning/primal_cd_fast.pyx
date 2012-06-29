@@ -903,6 +903,7 @@ def _primal_cd_l1l2r(self,
             delta = 0
             for k in xrange(n_vectors):
                 d_old[k] = 0
+                # Difference between new and old solution.
                 d[k] = scaling * d[k] - w[k, j]
                 delta += d[k] * g[k]
 
