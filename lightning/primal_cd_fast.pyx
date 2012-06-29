@@ -869,7 +869,6 @@ def _primal_cd_l1l2r(self,
                 R_j += w[k, j] * w[k, j]
 
                 Lpp = 0
-                L = 0
 
                 for i in xrange(n_samples):
                     if y[i] == k:
