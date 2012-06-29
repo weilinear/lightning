@@ -806,7 +806,7 @@ def _primal_cd_l1l2r(self,
         Xc = X
         n_features = index.shape[0]
 
-    cdef int t, s, i, j, k
+    cdef int t, s, i, j, k, n
     cdef int active_size = n_features
 
     cdef double* col_data
@@ -815,15 +815,26 @@ def _primal_cd_l1l2r(self,
     col = np.zeros(n_samples, dtype=np.float64)
     col_data = <double*>col.data
 
-    cdef np.ndarray[double, ndim=1, mode='c'] v
-    v = np.zeros(n_vectors, dtype=np.float64)
+    cdef np.ndarray[double, ndim=1, mode='c'] g
+    g = np.zeros(n_vectors, dtype=np.float64)
+
+    cdef np.ndarray[double, ndim=1, mode='c'] d
+    d = np.zeros(n_vectors, dtype=np.float64)
+
+    cdef np.ndarray[double, ndim=1, mode='c'] d_old
+    d_old = np.zeros(n_vectors, dtype=np.float64)
 
     cdef np.ndarray[double, ndim=1, mode='c'] Z
     Z = np.zeros(n_samples, dtype=np.float64)
 
     cdef double scaling, tmp
     cdef double Lpp, Lpp_max
-    cdef double L, L_new, R, R_new
+    cdef double L, L_new, R_j, R_j_new
+    cdef double delta
+
+    cdef int max_num_linesearch = 20
+    cdef double beta = 0.5
+    cdef double sigma = 0.01
 
     for t in xrange(max_iter):
         if verbose >= 1:
@@ -840,17 +851,22 @@ def _primal_cd_l1l2r(self,
                 kcache.compute_column(Xc, Xc, j, col)
                 col_ro = col_data
 
-            # Compute normalization.
+            # Compute normalization and objective value.
+            L = 0
             for i in xrange(n_samples):
                 Z[i] = 0
                 for k in xrange(n_vectors):
                     Z[i] += b[k, i]
+                L += log(Z[i])
+            L *= C
 
             # Compute gradient and largest second derivative.
             Lpp_max = -DBL_MAX
+            R_j = 0
 
             for k in xrange(n_vectors):
-                v[k] = 0
+                g[k] = 0
+                R_j += w[k, j] * w[k, j]
 
                 Lpp = 0
                 L = 0
@@ -861,7 +877,7 @@ def _primal_cd_l1l2r(self,
 
                     if Z[i] > 0:
                         tmp = b[k, i]
-                        v[k] += C * tmp * col_ro[i] / Z[i]
+                        g[k] += C * tmp * col_ro[i] / Z[i]
                         Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
 
                 Lpp *= C
@@ -869,32 +885,69 @@ def _primal_cd_l1l2r(self,
                 Lpp_max = max(Lpp, Lpp_max)
 
             Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
+            R_j = sqrt(R_j)
 
             # Compute vector to be projected.
             for k in xrange(n_vectors):
-                v[k] = w[k, j] - v[k] / Lpp_max
+                d[k] = w[k, j] - g[k] / Lpp_max
 
             # Project.
             scaling = 0
             for k in xrange(n_vectors):
-                scaling += v[k] * v[k]
+                scaling += d[k] * d[k]
 
             scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
 
             if scaling < 0:
                 scaling = 0
 
+            delta = 0
             for k in xrange(n_vectors):
-                v[k] = scaling * v[k] - w[k, j]
+                d_old[k] = 0
+                d[k] = scaling * d[k] - w[k, j]
+                delta += d[k] * g[k]
 
-            # Update predictions.
-            for i in xrange(n_samples):
+            # Perform line search.
+            for n in xrange(max_num_linesearch):
+
+                # Update predictions, normalizations and objective value.
+                L_new = 0
+                for i in xrange(n_samples):
+                    tmp = d_old[y[i]] - d[y[i]]
+                    Z[i] = 0
+
+                    for k in xrange(n_vectors):
+                        b[k, i] *= exp((d[k] - d_old[k] + tmp) * col_ro[i])
+                        Z[i] += b[k, i]
+
+                    L_new += log(Z[i])
+
+                L_new *= C
+
+                # Compute regularization term.
+                R_j_new = 0
                 for k in xrange(n_vectors):
-                    b[k, i] *= exp((v[k] - v[y[i]]) * col_ro[i])
+                    tmp = w[k, j] + d[k]
+                    R_j_new += tmp * tmp
+                R_j_new = sqrt(R_j_new)
+                # R_new = R - R_j + R_j_new
+
+                if n == 0:
+                    delta += R_j_new - R_j
+                    delta *= sigma
+
+                # Check decrease condition
+                if L_new - L + R_j_new - R_j <= delta:
+                    break
+                else:
+                    delta *= beta
+                    for k in xrange(n_vectors):
+                        d_old[k] = d[k]
+                        d[k] *= beta
 
             # Update solution
             for k in xrange(n_vectors):
-                w[k, j] += v[k]
+                w[k, j] += d[k]
 
 
 def _primal_cd_l2r(self,
