@@ -450,3 +450,11 @@ def test_l1l2_multiclass():
     df -= sel[:, np.newaxis]
     df = np.exp(df)
     assert_array_almost_equal(clf.errors_, df.T, 4)
+    assert_equal(np.sum(clf.coef_ != 0), 300)
+
+    clf = PrimalLinearSVC(penalty="l1/l2", max_iter=5, C=0.3, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    assert_almost_equal(clf.score(mult_dense, mult_target), 0.8033, 3)
+    nz = np.sum(clf.coef_ != 0)
+    assert_equal(nz, 246)
+    assert_true(nz % 3 == 0) # should be a multiple of n_classes
