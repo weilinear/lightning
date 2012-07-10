@@ -10,6 +10,7 @@ from sklearn.preprocessing import LabelBinarizer, LabelEncoder
 from .predict_fast import predict_alpha, decision_function_alpha
 from .kernel_fast import get_kernel
 from .random import RandomState
+from .dataset_fast import FortranDataset
 
 
 class BaseClassifier(BaseEstimator):
@@ -68,6 +69,9 @@ class BaseLinearClassifier(BaseClassifier):
             out = self.label_encoder_.inverse_transform(out)
 
         return out
+
+    def _get_dataset(self, X):
+        return FortranDataset(X)
 
 
 class BaseKernelClassifier(BaseClassifier):

@@ -23,6 +23,7 @@ from lightning.kernel_fast cimport Kernel
 from lightning.select_fast cimport get_select_method
 from lightning.select_fast cimport select_sv_precomputed
 from lightning.random.random_fast cimport RandomState
+from lightning.dataset_fast cimport Dataset
 
 cdef extern from "math.h":
    double fabs(double)
@@ -127,11 +128,12 @@ cdef class LossFunction:
 
     cdef void solve_l1l2_mc(self,
                             int j,
-                            int n_samples,
-                            int n_vectors,
                             double C,
                             np.ndarray[double, ndim=2, mode='c'] w,
-                            double *col_ro,
+                            int n_vectors,
+                            int* indices,
+                            double *data,
+                            int n_nz,
                             np.ndarray[int, ndim=1] y,
                             np.ndarray[double, ndim=2, mode='c'] b,
                             np.ndarray[double, ndim=1, mode='c'] g,
@@ -146,8 +148,8 @@ cdef class LossFunction:
         cdef double beta = 0.5
         cdef double sigma = 0.01
 
-        self.derivatives_l1l2_mc(j, n_samples, n_vectors, C,
-                                 w, col_ro, y, b, g, Z,
+        self.derivatives_l1l2_mc(j, C, w, n_vectors,
+                                 indices, data, n_nz, y, b, g, Z,
                                  &L, &R_j, &Lpp_max)
 
 
@@ -173,8 +175,8 @@ cdef class LossFunction:
             delta += d[k] * g[k]
 
         # Perform line search.
-        self.line_search_l1l2_mc(j, n_samples, n_vectors, C,
-                                 w, col_ro, y, b, g, d, d_old, Z,
+        self.line_search_l1l2_mc(j, C, w, n_vectors,
+                                 indices, data, n_nz, y, b, g, d, d_old, Z,
                                  L, R_j, &delta,
                                  max_num_linesearch, sigma, beta)
 
@@ -184,11 +186,12 @@ cdef class LossFunction:
 
     cdef void derivatives_l1l2_mc(self,
                                   int j,
-                                  int n_samples,
-                                  int n_vectors,
                                   double C,
                                   np.ndarray[double, ndim=2, mode='c'] w,
-                                  double *col_ro,
+                                  int n_vectors,
+                                  int* indices,
+                                  double *data,
+                                  int n_nz,
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
@@ -196,15 +199,16 @@ cdef class LossFunction:
                                   double* L,
                                   double* R_j,
                                   double* Lpp_max):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     cdef void line_search_l1l2_mc(self,
                                   int j,
-                                  int n_samples,
-                                  int n_vectors,
                                   double C,
                                   np.ndarray[double, ndim=2, mode='c'] w,
-                                  double *col_ro,
+                                  int n_vectors,
+                                  int* indices,
+                                  double *data,
+                                  int n_nz,
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
@@ -217,7 +221,7 @@ cdef class LossFunction:
                                   int max_num_linesearch,
                                   double sigma,
                                   double beta):
-        raise NotImplementedError
+        raise NotImplementedError()
 
 
 cdef class Squared(LossFunction):
@@ -366,11 +370,12 @@ cdef class SquaredHinge(LossFunction):
 
     cdef void derivatives_l1l2_mc(self,
                                   int j,
-                                  int n_samples,
-                                  int n_vectors,
                                   double C,
                                   np.ndarray[double, ndim=2, mode='c'] w,
-                                  double *col_ro,
+                                  int n_vectors,
+                                  int* indices,
+                                  double *data,
+                                  int n_nz,
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
@@ -379,7 +384,7 @@ cdef class SquaredHinge(LossFunction):
                                   double* R_j,
                                   double* Lpp_max):
 
-        cdef int i, k
+        cdef int ii, i, k
         cdef double tmp
 
         # Compute objective value, gradient and largest second derivative.
@@ -391,16 +396,18 @@ cdef class SquaredHinge(LossFunction):
             g[k] = 0
             R_j[0] += w[k, j] * w[k, j]
 
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
+
                 if y[i] == k:
                     continue
 
                 if b[k, i] > 0:
                     L[0] += b[k, i] * b[k, i]
-                    tmp = b[k, i] * col_ro[i]
+                    tmp = b[k, i] * data[ii]
                     g[y[i]] -= tmp
                     g[k] += tmp
-                    Lpp_max[0] += col_ro[i] * col_ro[i]
+                    Lpp_max[0] += data[ii] * data[ii]
 
         for k in xrange(n_vectors):
             g[k] *= 2 * C
@@ -412,11 +419,12 @@ cdef class SquaredHinge(LossFunction):
 
     cdef void line_search_l1l2_mc(self,
                                   int j,
-                                  int n_samples,
-                                  int n_vectors,
                                   double C,
                                   np.ndarray[double, ndim=2, mode='c'] w,
-                                  double *col_ro,
+                                  int n_vectors,
+                                  int* indices,
+                                  double *data,
+                                  int n_nz,
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
@@ -430,21 +438,23 @@ cdef class SquaredHinge(LossFunction):
                                   double sigma,
                                   double beta):
 
-        cdef int i, k, n
+        cdef int ii, i, k, n
         cdef double tmp, L_new, R_j_new, b_new
 
         for n in xrange(max_num_linesearch):
 
             # Update predictions, normalizations and objective value.
             L_new = 0
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
+
                 tmp = d_old[y[i]] - d[y[i]]
 
                 for k in xrange(n_vectors):
                     if k == y[i]:
                         continue
 
-                    b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * col_ro[i]
+                    b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * data[ii]
                     b[k, i] = b_new
                     if b_new > 0:
                         L_new += b_new * b_new
@@ -672,11 +682,12 @@ cdef class Log(LossFunction):
 
     cdef void derivatives_l1l2_mc(self,
                                   int j,
-                                  int n_samples,
-                                  int n_vectors,
                                   double C,
                                   np.ndarray[double, ndim=2, mode='c'] w,
-                                  double *col_ro,
+                                  int n_vectors,
+                                  int* indices,
+                                  double *data,
+                                  int n_nz,
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
@@ -685,12 +696,13 @@ cdef class Log(LossFunction):
                                   double* R_j,
                                   double* Lpp_max):
 
-        cdef int i, k
+        cdef int ii, i, k
         cdef double Lpp, tmp
 
         # Compute normalization and objective value.
         L[0] = 0
-        for i in xrange(n_samples):
+        for ii in xrange(n_nz):
+            i = indices[ii]
             Z[i] = 0
             for k in xrange(n_vectors):
                 Z[i] += b[k, i]
@@ -707,14 +719,16 @@ cdef class Log(LossFunction):
 
             Lpp = 0
 
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
+
                 if y[i] == k:
                     continue
 
                 if Z[i] > 0:
                     tmp = b[k, i]
-                    g[k] += tmp * col_ro[i] / Z[i]
-                    Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
+                    g[k] += tmp * data[ii] / Z[i]
+                    Lpp += data[ii] * data[ii] * tmp * (1 - tmp/Z[i]) / Z[i]
 
             g[k] *= C
             Lpp *= C
@@ -725,11 +739,12 @@ cdef class Log(LossFunction):
 
     cdef void line_search_l1l2_mc(self,
                                   int j,
-                                  int n_samples,
-                                  int n_vectors,
                                   double C,
                                   np.ndarray[double, ndim=2, mode='c'] w,
-                                  double *col_ro,
+                                  int n_vectors,
+                                  int* indices,
+                                  double *data,
+                                  int n_nz,
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
@@ -743,19 +758,20 @@ cdef class Log(LossFunction):
                                   double sigma,
                                   double beta):
 
-        cdef int i, k, n
+        cdef int ii, i, k, n
         cdef double tmp, L_new, R_j_new
 
         for n in xrange(max_num_linesearch):
 
             # Update predictions, normalizations and objective value.
             L_new = 0
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
                 tmp = d_old[y[i]] - d[y[i]]
                 Z[i] = 0
 
                 for k in xrange(n_vectors):
-                    b[k, i] *= exp((d[k] - d_old[k] + tmp) * col_ro[i])
+                    b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
                     Z[i] += b[k, i]
 
                 L_new += log(Z[i])
@@ -1038,7 +1054,7 @@ def _primal_cd_l2svm_l1r(self,
 def _primal_cd_l1l2r(self,
                      np.ndarray[double, ndim=2, mode='c'] w,
                      np.ndarray[double, ndim=2, mode='c'] b,
-                     X,
+                     Dataset X,
                      np.ndarray[int, ndim=1] y,
                      np.ndarray[int, ndim=1, mode='c'] index,
                      LossFunction loss,
@@ -1051,27 +1067,16 @@ def _primal_cd_l1l2r(self,
                      callback,
                      int verbose):
 
-    cdef Py_ssize_t n_samples = X.shape[0]
-    cdef Py_ssize_t n_features = X.shape[1]
+    cdef int n_samples = X.get_n_samples()
+    cdef int n_features = index.shape[0]
     cdef Py_ssize_t n_vectors = w.shape[0]
-
-    cdef np.ndarray[double, ndim=2, mode='fortran'] Xf
-    cdef np.ndarray[double, ndim=2, mode='c'] Xc
-
-    if linear_kernel:
-        Xf = X
-    else:
-        Xc = X
-        n_features = index.shape[0]
 
     cdef int t, s, i, j, k, n
     cdef int active_size = n_features
 
-    cdef double* col_data
-    cdef double* col_ro
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    col = np.zeros(n_samples, dtype=np.float64)
-    col_data = <double*>col.data
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
 
     cdef np.ndarray[double, ndim=1, mode='c'] g
     g = np.zeros(n_vectors, dtype=np.float64)
@@ -1094,14 +1099,10 @@ def _primal_cd_l1l2r(self,
         for s in xrange(active_size):
             j = index[s]
 
-            if linear_kernel:
-                col_ro = (<double*>Xf.data) + j * n_samples
-            else:
-                kcache.compute_column(Xc, Xc, j, col)
-                col_ro = col_data
+            X.get_column_ptr(j, &indices, &data, &n_nz)
 
-            loss.solve_l1l2_mc(j, n_samples, n_vectors, C,
-                               w, col_ro, y, b, g, d, d_old, Z)
+            loss.solve_l1l2_mc(j, C, w, n_vectors,
+                               indices, data, n_nz, y, b, g, d, d_old, Z)
 
 
 def _primal_cd_l2r(self,
