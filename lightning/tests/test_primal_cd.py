@@ -14,8 +14,6 @@ from lightning.primal_cd import C_lower_bound, C_upper_bound
 
 from lightning.kernel_fast import get_kernel, KernelCache
 
-from primal_kernel import PrimalKernelSVC
-
 bin_dense, bin_target = make_classification(n_samples=200, n_features=100,
                                             n_informative=5,
                                             n_classes=2, random_state=0)
@@ -350,62 +348,13 @@ def test_shared_kcache():
     assert_true(n_nz < n_nz2)
 
 
-def test_fit_rbf_binary_l2r_kernelized_selection():
-    clf = PrimalSVC(C=1.0, random_state=0, penalty="l2", loss="squared_hinge",
-                    max_iter=1, kernel="rbf", kernel_regularizer=True,
-                    selection="loss")
-    clf.fit(bin_dense, bin_target)
-    acc = clf.score(bin_dense, bin_target)
-    assert_almost_equal(acc, 1.0)
-
-
 def test_fit_rbf_binary_l2r_correctness():
     for loss in ("squared_hinge", "modified_huber", "log"):
         clf = PrimalSVC(C=1.0, random_state=0, penalty="l2", loss=loss,
-                        max_iter=1, kernel="rbf", kernel_regularizer=False)
+                        max_iter=1, kernel="rbf")
         clf.fit(bin_dense, bin_target)
         acc = clf.score(bin_dense, bin_target)
         assert_almost_equal(acc, 1.0)
-
-        clf2 = PrimalKernelSVC(C=1.0, random_state=0, loss=loss,
-                               max_iter=1, kernel="rbf",
-                               kernel_regularizer=False)
-        clf2.fit(bin_dense, bin_target)
-        assert_array_almost_equal(clf.coef_, clf2.coef_, decimal=5)
-
-
-def test_fit_rbf_binary_l2r_correctness_kernelized():
-    for loss in ("squared_hinge", "modified_huber", "log"):
-        clf = PrimalSVC(C=1.0, random_state=0, penalty="l2", loss=loss,
-                        max_iter=1, kernel="rbf", kernel_regularizer=True)
-        clf.fit(bin_dense, bin_target)
-        acc = clf.score(bin_dense, bin_target)
-        assert_almost_equal(acc, 1.0)
-
-        clf2 = PrimalKernelSVC(C=1.0, random_state=0, loss=loss,
-                               max_iter=1, kernel="rbf",
-                               kernel_regularizer=True)
-        clf2.fit(bin_dense, bin_target)
-        assert_array_almost_equal(clf.coef_, clf2.coef_, decimal=5)
-
-
-def test_fit_rbf_binary_l2r_kernelized_upper_bound():
-    clf = PrimalSVC(C=1.0, random_state=0, penalty="l2", loss="squared_hinge",
-                    max_iter=20, kernel="rbf", kernel_regularizer=True,
-                    selection="loss", termination="n_components", n_components=30)
-    clf.fit(bin_dense, bin_target)
-    acc = clf.score(bin_dense, bin_target)
-    assert_almost_equal(acc, 0.80)
-    assert_equal(clf.n_support_vectors(), 30)
-
-    clf = PrimalSVC(C=1.0, random_state=0, penalty="l2l2", loss="squared_hinge",
-                    max_iter=20, kernel="rbf", kernel_regularizer=True,
-                    selection="loss", termination="n_components", n_components=30,
-                    warm_debiasing=True)
-    clf.fit(bin_dense, bin_target)
-    acc = clf.score(bin_dense, bin_target)
-    assert_almost_equal(acc, 0.80)
-    assert_equal(clf.n_support_vectors(), 30)
 
 
 def test_fit_squared_loss():
@@ -420,16 +369,14 @@ def test_fit_squared_loss():
 
     K = pairwise_kernels(bin_dense, metric="rbf", gamma=0.1)
 
-    for kernel_regularizer in (True, False):
-        clf = PrimalSVC(C=1.0, random_state=0, penalty="l2",
-                        kernel="rbf", gamma=0.1,
-                        selection="loss",
-                        loss="squared", max_iter=100,
-                        kernel_regularizer=kernel_regularizer)
-        clf.fit(bin_dense, bin_target)
-        assert_almost_equal(clf.score(bin_dense, bin_target), 1.0)
-        assert_array_almost_equal(1 - y * np.dot(K, clf.coef_.ravel()),
-                                  clf.errors_.ravel())
+    clf = PrimalSVC(C=1.0, random_state=0, penalty="l2",
+                    kernel="rbf", gamma=0.1,
+                    selection="loss",
+                    loss="squared", max_iter=100)
+    clf.fit(bin_dense, bin_target)
+    assert_almost_equal(clf.score(bin_dense, bin_target), 1.0)
+    assert_array_almost_equal(1 - y * np.dot(K, clf.coef_.ravel()),
+                              clf.errors_.ravel())
 
 
 def test_l1l2_multiclass():

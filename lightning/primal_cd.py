@@ -92,7 +92,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                 else:
                     _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
                                    X, None, Y[:, i], indices,
-                                   self._get_loss(), kcache, True, False,
+                                   self._get_loss(), kcache, True,
                                    "permute", 60,
                                    self.termination, self.nz_coef_upper_bound,
                                    self.C, self.max_iter, rs, self.tol,
@@ -104,7 +104,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l1",
-                 max_iter=10, tol=1e-3, kernel_regularizer=False,
+                 max_iter=10, tol=1e-3,
                  kernel="linear", gamma=0.1, coef0=1, degree=4,
                  Cd=1.0, warm_debiasing=False,
                  selection="permute", search_size=60,
@@ -116,7 +116,6 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         self.penalty = penalty
         self.max_iter = max_iter
         self.tol = tol
-        self.kernel_regularizer = kernel_regularizer
         self.kernel = kernel
         self.gamma = gamma
         self.coef0 = coef0
@@ -187,7 +186,6 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
                                X, A, Y[:, i], indices,
                                self._get_loss(), kcache, False,
-                               self.kernel_regularizer,
                                self.selection, self.search_size,
                                termination, self.n_components,
                                C, self.max_iter, rs, self.tol,
@@ -210,7 +208,6 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
                                X, A, Y[:, i], indices,
                                self._get_loss(), kcache, False,
-                               self.kernel_regularizer,
                                selection, self.search_size,
                                termination, self.n_components,
                                C, self.max_iter, rs, self.tol,

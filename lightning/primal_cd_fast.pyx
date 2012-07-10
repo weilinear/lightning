@@ -44,12 +44,11 @@ cdef class LossFunction:
                        double *col,
                        double *y,
                        double *b,
-                       double *Dp,
-                       int kernel_regularizer):
+                       double *Dp):
 
         cdef double sigma = 0.01
         cdef double beta = 0.5
-        cdef double bound, Dpp, Dj_zero, z, d, regul_deriv
+        cdef double bound, Dpp, Dj_zero, z, d
 
         self.derivatives_l2(j,
                             n_samples,
@@ -63,9 +62,7 @@ cdef class LossFunction:
                             Dp,
                             &Dpp,
                             &Dj_zero,
-                            &bound,
-                            kernel_regularizer,
-                            &regul_deriv)
+                            &bound)
 
         if fabs(Dp[0]/Dpp) <= 1e-12:
             return
@@ -86,21 +83,9 @@ cdef class LossFunction:
                                 Dp[0],
                                 Dpp,
                                 Dj_zero,
-                                bound,
-                                kernel_regularizer,
-                                regul_deriv)
+                                bound)
 
         w[j] += z
-
-    cdef double regularizer_derivative(self,
-                                       int n_samples,
-                                       double *w,
-                                       double *col_ro):
-        cdef int i
-        cdef double ret = 0
-        for i in xrange(n_samples):
-            ret += w[i] * col_ro[i]
-        return ret
 
     cdef void derivatives_l2(self,
                              int j,
@@ -115,9 +100,7 @@ cdef class LossFunction:
                              double *Dp,
                              double *Dpp,
                              double *Dj_zero,
-                             double *bound,
-                             int kernel_regularizer,
-                             double *regul_deriv):
+                             double *bound):
         raise NotImplementedError()
 
     cdef double line_search_l2(self,
@@ -135,9 +118,7 @@ cdef class LossFunction:
                                double Dp,
                                double Dpp,
                                double Dj_zero,
-                               double bound,
-                               int kernel_regularizer,
-                               double regul_deriv):
+                               double bound):
         raise NotImplementedError()
 
 
@@ -153,8 +134,7 @@ cdef class Squared(LossFunction):
                        double *col,
                        double *y,
                        double *b,
-                       double *Dp,
-                       int kernel_regularizer):
+                       double *Dp):
         cdef int i
         cdef double pred, num, denom, old_w, val, z
 
@@ -175,13 +155,8 @@ cdef class Squared(LossFunction):
         denom += 1
         num *= 2 * C
 
-        if kernel_regularizer:
-            val = self.regularizer_derivative(n_samples, w, col_ro)
-            Dp[0] = val + 2 * C * Dp[0]
-            num -= val
-        else:
-            Dp[0] = w[j] + 2 * C * Dp[0]
-            num -= w[j]
+        Dp[0] = w[j] + 2 * C * Dp[0]
+        num -= w[j]
 
         old_w = w[j]
         z = num/denom
@@ -206,9 +181,7 @@ cdef class SquaredHinge(LossFunction):
                              double *Dp,
                              double *Dpp,
                              double *Dj_zero,
-                             double *bound,
-                             int kernel_regularizer,
-                             double *regul_deriv):
+                             double *bound):
         cdef int i
         cdef double xj_sq = 0
         cdef double val
@@ -227,18 +200,9 @@ cdef class SquaredHinge(LossFunction):
                 Dpp[0] += val * val
                 Dj_zero[0] += b[i] * b[i]
 
-
-        if kernel_regularizer:
-            regul_deriv[0] = self.regularizer_derivative(n_samples,
-                                                         w,
-                                                         col_ro)
-            Dp[0] = regul_deriv[0] + 2 * C * Dp[0]
-            Dpp[0] = col_ro[j] + 2 * C * Dpp[0]
-            bound[0] = (2 * C * xj_sq + col_ro[j]) / 2.0 + sigma
-        else:
-            Dp[0] = w[j] + 2 * C * Dp[0]
-            Dpp[0] = 1 + 2 * C * Dpp[0]
-            bound[0] = (2 * C * xj_sq + 1) / 2.0 + sigma
+        Dp[0] = w[j] + 2 * C * Dp[0]
+        Dpp[0] = 1 + 2 * C * Dpp[0]
+        bound[0] = (2 * C * xj_sq + 1) / 2.0 + sigma
 
         Dj_zero[0] *= C
 
@@ -257,9 +221,7 @@ cdef class SquaredHinge(LossFunction):
                                double Dp,
                                double Dpp,
                                double Dj_zero,
-                               double bound,
-                               int kernel_regularizer,
-                               double regul_deriv):
+                               double bound):
         cdef int step
         cdef double z_diff, z_old, z, Dj_z, b_new, cond
 
@@ -287,12 +249,9 @@ cdef class SquaredHinge(LossFunction):
 
             z_old = z
 
-            if kernel_regularizer:
-                cond = regul_deriv * z + (0.5 * col_ro[j] * y[i] + sigma) * z * z
-            else:
-                #   0.5 * (w + z e_j)^T (w + z e_j)
-                # = 0.5 * w^T w + w_j z + 0.5 z^2
-                cond = w[j] * z + (0.5 + sigma) * z * z
+            #   0.5 * (w + z e_j)^T (w + z e_j)
+            # = 0.5 * w^T w + w_j z + 0.5 z^2
+            cond = w[j] * z + (0.5 + sigma) * z * z
 
             cond += Dj_z - Dj_zero
 
@@ -319,9 +278,7 @@ cdef class ModifiedHuber(LossFunction):
                              double *Dp,
                              double *Dpp,
                              double *Dj_zero,
-                             double *bound,
-                             int kernel_regularizer,
-                             double *regul_deriv):
+                             double *bound):
         cdef int i
         cdef double xj_sq = 0
         cdef double val
@@ -344,17 +301,9 @@ cdef class ModifiedHuber(LossFunction):
                 Dpp[0] += val * val
                 Dj_zero[0] += b[i] * b[i]
 
-        if kernel_regularizer:
-            regul_deriv[0] = self.regularizer_derivative(n_samples,
-                                                         w,
-                                                         col_ro)
-            Dp[0] = regul_deriv[0] + 2 * C * Dp[0]
-            Dpp[0] = col_ro[j] + 2 * C * Dpp[0]
-            bound[0] = (2 * C * xj_sq + col_ro[j]) / 2.0 + sigma
-        else:
-            Dp[0] = w[j] + 2 * C * Dp[0]
-            Dpp[0] = 1 + 2 * C * Dpp[0]
-            bound[0] = (2 * C * xj_sq + 1) / 2.0 + sigma
+        Dp[0] = w[j] + 2 * C * Dp[0]
+        Dpp[0] = 1 + 2 * C * Dpp[0]
+        bound[0] = (2 * C * xj_sq + 1) / 2.0 + sigma
 
         Dj_zero[0] *= C
 
@@ -374,9 +323,7 @@ cdef class ModifiedHuber(LossFunction):
                                double Dp,
                                double Dpp,
                                double Dj_zero,
-                               double bound,
-                               int kernel_regularizer,
-                               double regul_deriv):
+                               double bound):
         cdef int step
         cdef double z_diff, z_old, z, Dj_z, b_new, cond
 
@@ -407,12 +354,9 @@ cdef class ModifiedHuber(LossFunction):
 
             z_old = z
 
-            if kernel_regularizer:
-                cond = regul_deriv * z + (0.5 * col_ro[j] * y[i] + sigma) * z * z
-            else:
-                #   0.5 * (w + z e_j)^T (w + z e_j)
-                # = 0.5 * w^T w + w_j z + 0.5 z^2
-                cond = w[j] * z + (0.5 + sigma) * z * z
+            #   0.5 * (w + z e_j)^T (w + z e_j)
+            # = 0.5 * w^T w + w_j z + 0.5 z^2
+            cond = w[j] * z + (0.5 + sigma) * z * z
 
             cond += Dj_z - Dj_zero
 
@@ -439,9 +383,7 @@ cdef class Log(LossFunction):
                              double *Dp,
                              double *Dpp,
                              double *Dj_zero,
-                             double *bound,
-                             int kernel_regularizer,
-                             double *regul_deriv):
+                             double *bound):
         cdef int i
         cdef double xj_sq = 0
         cdef double val, tau, exppred
@@ -460,15 +402,8 @@ cdef class Log(LossFunction):
             Dpp[0] += val * val * tau * (1 - tau)
             Dj_zero[0] += log(exppred)
 
-        if kernel_regularizer:
-            regul_deriv[0] = self.regularizer_derivative(n_samples,
-                                                         w,
-                                                         col_ro)
-            Dp[0] = regul_deriv[0] + C * Dp[0]
-            Dpp[0] = col_ro[j] + C * Dpp[0]
-        else:
-            Dp[0] = w[j] + C * Dp[0]
-            Dpp[0] = 1 + C * Dpp[0]
+        Dp[0] = w[j] + C * Dp[0]
+        Dpp[0] = 1 + C * Dpp[0]
 
         Dj_zero[0] *= C
 
@@ -488,9 +423,7 @@ cdef class Log(LossFunction):
                                double Dp,
                                double Dpp,
                                double Dj_zero,
-                               double bound,
-                               int kernel_regularizer,
-                               double regul_deriv):
+                               double bound):
         cdef int step
         cdef double z_diff, z_old, z, Dj_z, exppred, cond
 
@@ -510,12 +443,9 @@ cdef class Log(LossFunction):
 
             z_old = z
 
-            if kernel_regularizer:
-                cond = regul_deriv * z + (0.5 * col_ro[j] * y[i] + sigma) * z * z
-            else:
-                #   0.5 * (w + z e_j)^T (w + z e_j)
-                # = 0.5 * w^T w + w_j z + 0.5 z^2
-                cond = w[j] * z + (0.5 + sigma) * z * z
+            #   0.5 * (w + z e_j)^T (w + z e_j)
+            # = 0.5 * w^T w + w_j z + 0.5 z^2
+            cond = w[j] * z + (0.5 + sigma) * z * z
 
             cond += Dj_z - Dj_zero
 
@@ -960,7 +890,6 @@ def _primal_cd_l2r(self,
                    LossFunction loss,
                    KernelCache kcache,
                    int linear_kernel,
-                   int kernel_regularizer,
                    selection,
                    int search_size,
                    termination,
@@ -1038,8 +967,7 @@ def _primal_cd_l2r(self,
                           col_ptr,
                           <double*>y.data,
                           <double*>b.data,
-                          &Dp,
-                          kernel_regularizer)
+                          &Dp)
 
             if fabs(Dp) > Dpmax:
                 Dpmax = fabs(Dp)
