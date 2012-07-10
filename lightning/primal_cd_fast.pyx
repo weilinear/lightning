@@ -266,6 +266,8 @@ cdef class Squared(LossFunction):
 
 cdef class SquaredHinge(LossFunction):
 
+    # L2 regularization
+
     cdef void derivatives_l2(self,
                              int j,
                              int n_samples,
@@ -359,6 +361,116 @@ cdef class SquaredHinge(LossFunction):
                 z *= beta
 
         return z
+
+    # L1/L2 regularization (multi-class)
+
+    cdef void derivatives_l1l2_mc(self,
+                                  int j,
+                                  int n_samples,
+                                  int n_vectors,
+                                  double C,
+                                  np.ndarray[double, ndim=2, mode='c'] w,
+                                  double *col_ro,
+                                  np.ndarray[int, ndim=1] y,
+                                  np.ndarray[double, ndim=2, mode='c'] b,
+                                  np.ndarray[double, ndim=1, mode='c'] g,
+                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double* L,
+                                  double* R_j,
+                                  double* Lpp_max):
+
+        cdef int i, k
+        cdef double tmp
+
+        # Compute objective value, gradient and largest second derivative.
+        Lpp_max[0] = 0
+        R_j[0] = 0
+        L[0] = 0
+
+        for k in xrange(n_vectors):
+            g[k] = 0
+            R_j[0] += w[k, j] * w[k, j]
+
+            for i in xrange(n_samples):
+                if y[i] == k:
+                    continue
+
+                if b[k, i] > 0:
+                    L[0] += b[k, i] * b[k, i]
+                    tmp = b[k, i] * col_ro[i]
+                    g[y[i]] -= tmp
+                    g[k] += tmp
+                    Lpp_max[0] += col_ro[i] * col_ro[i]
+
+        for k in xrange(n_vectors):
+            g[k] *= 2 * C
+
+        L[0] *= C
+        Lpp_max[0] *= 2 * C
+        Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
+        R_j[0] = sqrt(R_j[0])
+
+    cdef void line_search_l1l2_mc(self,
+                                  int j,
+                                  int n_samples,
+                                  int n_vectors,
+                                  double C,
+                                  np.ndarray[double, ndim=2, mode='c'] w,
+                                  double *col_ro,
+                                  np.ndarray[int, ndim=1] y,
+                                  np.ndarray[double, ndim=2, mode='c'] b,
+                                  np.ndarray[double, ndim=1, mode='c'] g,
+                                  np.ndarray[double, ndim=1, mode='c'] d,
+                                  np.ndarray[double, ndim=1, mode='c'] d_old,
+                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double L,
+                                  double R_j,
+                                  double* delta,
+                                  int max_num_linesearch,
+                                  double sigma,
+                                  double beta):
+
+        cdef int i, k, n
+        cdef double tmp, L_new, R_j_new, b_new
+
+        for n in xrange(max_num_linesearch):
+
+            # Update predictions, normalizations and objective value.
+            L_new = 0
+            for i in xrange(n_samples):
+                tmp = d_old[y[i]] - d[y[i]]
+
+                for k in xrange(n_vectors):
+                    if k == y[i]:
+                        continue
+
+                    b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * col_ro[i]
+                    b[k, i] = b_new
+                    if b_new > 0:
+                        L_new += b_new * b_new
+
+            L_new *= C
+
+            # Compute regularization term.
+            R_j_new = 0
+            for k in xrange(n_vectors):
+                tmp = w[k, j] + d[k]
+                R_j_new += tmp * tmp
+            R_j_new = sqrt(R_j_new)
+            # R_new = R - R_j + R_j_new
+
+            if n == 0:
+                delta[0] += R_j_new - R_j
+                delta[0] *= sigma
+
+            # Check decrease condition
+            if L_new - L + R_j_new - R_j <= delta[0]:
+                break
+            else:
+                delta[0] *= beta
+                for k in xrange(n_vectors):
+                    d_old[k] = d[k]
+                    d[k] *= beta
 
 
 cdef class ModifiedHuber(LossFunction):

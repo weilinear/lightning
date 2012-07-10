@@ -379,7 +379,7 @@ def test_fit_squared_loss():
                               clf.errors_.ravel())
 
 
-def test_l1l2_multiclass():
+def test_l1l2_multiclass_log_loss():
     clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
                           max_iter=5, C=1.0, random_state=0)
     clf.fit(mult_dense, mult_target)
@@ -398,3 +398,27 @@ def test_l1l2_multiclass():
     nz = np.sum(clf.coef_ != 0)
     assert_equal(nz, 246)
     assert_true(nz % 3 == 0) # should be a multiple of n_classes
+
+def test_l1l2_multiclass_squared_hinge_loss():
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                          max_iter=20, C=1.0, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    assert_almost_equal(clf.score(mult_dense, mult_target), 0.833, 3)
+    df = clf.decision_function(mult_dense)
+    n_samples, n_vectors = df.shape
+    diff = np.zeros_like(clf.errors_)
+    for i in xrange(n_samples):
+        for k in xrange(n_vectors):
+            diff[k, i] = 1 - (df[i, mult_target[i]] - df[i, k])
+    assert_array_almost_equal(clf.errors_, diff, 5)
+    assert_equal(np.sum(clf.coef_ != 0), 300)
+
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                          max_iter=20, C=0.05, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    #assert_almost_equal(clf.score(mult_dense, mult_target), 0.84, 3)
+    print clf.score(mult_dense, mult_target)
+    nz = np.sum(clf.coef_ != 0)
+    print nz
+    #assert_equal(nz, 246)
+    #assert_true(nz % 3 == 0) # should be a multiple of n_classes
