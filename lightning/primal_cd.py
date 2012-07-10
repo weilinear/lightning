@@ -76,7 +76,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         if self.penalty == "l1/l2":
             _primal_cd_l1l2r(self,
                              self.coef_, self.errors_,
-                             X, y, indices, kcache, True,
+                             X, y, indices, self._get_loss(), kcache, True,
                              self.C, self.max_iter, rs, self.tol,
                              self.callback, self.verbose)
         else:

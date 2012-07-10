@@ -35,6 +35,8 @@ cdef extern from "float.h":
 
 cdef class LossFunction:
 
+    # L2 regularization
+
     cdef void solve_l2(self,
                        int j,
                        int n_samples,
@@ -120,6 +122,102 @@ cdef class LossFunction:
                                double Dj_zero,
                                double bound):
         raise NotImplementedError()
+
+    # L1/L2 regularization (multiclass)
+
+    cdef void solve_l1l2_mc(self,
+                            int j,
+                            int n_samples,
+                            int n_vectors,
+                            double C,
+                            np.ndarray[double, ndim=2, mode='c'] w,
+                            double *col_ro,
+                            np.ndarray[int, ndim=1] y,
+                            np.ndarray[double, ndim=2, mode='c'] b,
+                            np.ndarray[double, ndim=1, mode='c'] g,
+                            np.ndarray[double, ndim=1, mode='c'] d,
+                            np.ndarray[double, ndim=1, mode='c'] d_old,
+                            np.ndarray[double, ndim=1, mode='c'] Z):
+
+        cdef int i, k
+        cdef double scaling, delta, L, R_j, Lpp_max
+
+        cdef int max_num_linesearch = 20
+        cdef double beta = 0.5
+        cdef double sigma = 0.01
+
+        self.derivatives_l1l2_mc(j, n_samples, n_vectors, C,
+                                 w, col_ro, y, b, g, Z,
+                                 &L, &R_j, &Lpp_max)
+
+
+        # Compute vector to be projected.
+        for k in xrange(n_vectors):
+            d[k] = w[k, j] - g[k] / Lpp_max
+
+        # Project.
+        scaling = 0
+        for k in xrange(n_vectors):
+            scaling += d[k] * d[k]
+
+        scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
+
+        if scaling < 0:
+            scaling = 0
+
+        delta = 0
+        for k in xrange(n_vectors):
+            d_old[k] = 0
+            # Difference between new and old solution.
+            d[k] = scaling * d[k] - w[k, j]
+            delta += d[k] * g[k]
+
+        # Perform line search.
+        self.line_search_l1l2_mc(j, n_samples, n_vectors, C,
+                                 w, col_ro, y, b, g, d, d_old, Z,
+                                 L, R_j, &delta,
+                                 max_num_linesearch, sigma, beta)
+
+        # Update solution
+        for k in xrange(n_vectors):
+            w[k, j] += d[k]
+
+    cdef void derivatives_l1l2_mc(self,
+                                  int j,
+                                  int n_samples,
+                                  int n_vectors,
+                                  double C,
+                                  np.ndarray[double, ndim=2, mode='c'] w,
+                                  double *col_ro,
+                                  np.ndarray[int, ndim=1] y,
+                                  np.ndarray[double, ndim=2, mode='c'] b,
+                                  np.ndarray[double, ndim=1, mode='c'] g,
+                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double* L,
+                                  double* R_j,
+                                  double* Lpp_max):
+        raise NotImplementedError
+
+    cdef void line_search_l1l2_mc(self,
+                                  int j,
+                                  int n_samples,
+                                  int n_vectors,
+                                  double C,
+                                  np.ndarray[double, ndim=2, mode='c'] w,
+                                  double *col_ro,
+                                  np.ndarray[int, ndim=1] y,
+                                  np.ndarray[double, ndim=2, mode='c'] b,
+                                  np.ndarray[double, ndim=1, mode='c'] g,
+                                  np.ndarray[double, ndim=1, mode='c'] d,
+                                  np.ndarray[double, ndim=1, mode='c'] d_old,
+                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double L,
+                                  double R_j,
+                                  double* delta,
+                                  int max_num_linesearch,
+                                  double sigma,
+                                  double beta):
+        raise NotImplementedError
 
 
 cdef class Squared(LossFunction):
@@ -370,6 +468,8 @@ cdef class ModifiedHuber(LossFunction):
 
 cdef class Log(LossFunction):
 
+    # L2 regularization
+
     cdef void derivatives_l2(self,
                              int j,
                              int n_samples,
@@ -455,6 +555,121 @@ cdef class Log(LossFunction):
                 z *= beta
 
         return z
+
+    # L1/L2 regulariztion (multiclass)
+
+    cdef void derivatives_l1l2_mc(self,
+                                  int j,
+                                  int n_samples,
+                                  int n_vectors,
+                                  double C,
+                                  np.ndarray[double, ndim=2, mode='c'] w,
+                                  double *col_ro,
+                                  np.ndarray[int, ndim=1] y,
+                                  np.ndarray[double, ndim=2, mode='c'] b,
+                                  np.ndarray[double, ndim=1, mode='c'] g,
+                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double* L,
+                                  double* R_j,
+                                  double* Lpp_max):
+
+        cdef int i, k
+        cdef double Lpp, tmp
+
+        # Compute normalization and objective value.
+        L[0] = 0
+        for i in xrange(n_samples):
+            Z[i] = 0
+            for k in xrange(n_vectors):
+                Z[i] += b[k, i]
+            L[0] += log(Z[i])
+        L[0] *= C
+
+        # Compute gradient and largest second derivative.
+        Lpp_max[0] = -DBL_MAX
+        R_j[0] = 0
+
+        for k in xrange(n_vectors):
+            g[k] = 0
+            R_j[0] += w[k, j] * w[k, j]
+
+            Lpp = 0
+
+            for i in xrange(n_samples):
+                if y[i] == k:
+                    continue
+
+                if Z[i] > 0:
+                    tmp = b[k, i]
+                    g[k] += tmp * col_ro[i] / Z[i]
+                    Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
+
+            g[k] *= C
+            Lpp *= C
+            Lpp_max[0] = max(Lpp, Lpp_max[0])
+
+        Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
+        R_j[0] = sqrt(R_j[0])
+
+    cdef void line_search_l1l2_mc(self,
+                                  int j,
+                                  int n_samples,
+                                  int n_vectors,
+                                  double C,
+                                  np.ndarray[double, ndim=2, mode='c'] w,
+                                  double *col_ro,
+                                  np.ndarray[int, ndim=1] y,
+                                  np.ndarray[double, ndim=2, mode='c'] b,
+                                  np.ndarray[double, ndim=1, mode='c'] g,
+                                  np.ndarray[double, ndim=1, mode='c'] d,
+                                  np.ndarray[double, ndim=1, mode='c'] d_old,
+                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double L,
+                                  double R_j,
+                                  double* delta,
+                                  int max_num_linesearch,
+                                  double sigma,
+                                  double beta):
+
+        cdef int i, k, n
+        cdef double tmp, L_new, R_j_new
+
+        for n in xrange(max_num_linesearch):
+
+            # Update predictions, normalizations and objective value.
+            L_new = 0
+            for i in xrange(n_samples):
+                tmp = d_old[y[i]] - d[y[i]]
+                Z[i] = 0
+
+                for k in xrange(n_vectors):
+                    b[k, i] *= exp((d[k] - d_old[k] + tmp) * col_ro[i])
+                    Z[i] += b[k, i]
+
+                L_new += log(Z[i])
+
+            L_new *= C
+
+            # Compute regularization term.
+            R_j_new = 0
+            for k in xrange(n_vectors):
+                tmp = w[k, j] + d[k]
+                R_j_new += tmp * tmp
+            R_j_new = sqrt(R_j_new)
+            # R_new = R - R_j + R_j_new
+
+            if n == 0:
+                delta[0] += R_j_new - R_j
+                delta[0] *= sigma
+
+            # Check decrease condition
+            if L_new - L + R_j_new - R_j <= delta[0]:
+                break
+            else:
+                delta[0] *= beta
+                for k in xrange(n_vectors):
+                    d_old[k] = d[k]
+                    d[k] *= beta
 
 
 def _primal_cd_l2svm_l1r(self,
@@ -714,6 +929,7 @@ def _primal_cd_l1l2r(self,
                      X,
                      np.ndarray[int, ndim=1] y,
                      np.ndarray[int, ndim=1, mode='c'] index,
+                     LossFunction loss,
                      KernelCache kcache,
                      int linear_kernel,
                      double C,
@@ -757,15 +973,6 @@ def _primal_cd_l1l2r(self,
     cdef np.ndarray[double, ndim=1, mode='c'] Z
     Z = np.zeros(n_samples, dtype=np.float64)
 
-    cdef double scaling, tmp
-    cdef double Lpp, Lpp_max
-    cdef double L, L_new, R_j, R_j_new
-    cdef double delta
-
-    cdef int max_num_linesearch = 20
-    cdef double beta = 0.5
-    cdef double sigma = 0.01
-
     for t in xrange(max_iter):
         if verbose >= 1:
             print "\nIteration", t
@@ -781,103 +988,8 @@ def _primal_cd_l1l2r(self,
                 kcache.compute_column(Xc, Xc, j, col)
                 col_ro = col_data
 
-            # Compute normalization and objective value.
-            L = 0
-            for i in xrange(n_samples):
-                Z[i] = 0
-                for k in xrange(n_vectors):
-                    Z[i] += b[k, i]
-                L += log(Z[i])
-            L *= C
-
-            # Compute gradient and largest second derivative.
-            Lpp_max = -DBL_MAX
-            R_j = 0
-
-            for k in xrange(n_vectors):
-                g[k] = 0
-                R_j += w[k, j] * w[k, j]
-
-                Lpp = 0
-
-                for i in xrange(n_samples):
-                    if y[i] == k:
-                        continue
-
-                    if Z[i] > 0:
-                        tmp = b[k, i]
-                        g[k] += tmp * col_ro[i] / Z[i]
-                        Lpp += col_ro[i] * col_ro[i] * tmp * (1 - tmp/Z[i]) / Z[i]
-
-                g[k] *= C
-                Lpp *= C
-                Lpp_max = max(Lpp, Lpp_max)
-
-            Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
-            R_j = sqrt(R_j)
-
-            # Compute vector to be projected.
-            for k in xrange(n_vectors):
-                d[k] = w[k, j] - g[k] / Lpp_max
-
-            # Project.
-            scaling = 0
-            for k in xrange(n_vectors):
-                scaling += d[k] * d[k]
-
-            scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
-
-            if scaling < 0:
-                scaling = 0
-
-            delta = 0
-            for k in xrange(n_vectors):
-                d_old[k] = 0
-                # Difference between new and old solution.
-                d[k] = scaling * d[k] - w[k, j]
-                delta += d[k] * g[k]
-
-            # Perform line search.
-            for n in xrange(max_num_linesearch):
-
-                # Update predictions, normalizations and objective value.
-                L_new = 0
-                for i in xrange(n_samples):
-                    tmp = d_old[y[i]] - d[y[i]]
-                    Z[i] = 0
-
-                    for k in xrange(n_vectors):
-                        b[k, i] *= exp((d[k] - d_old[k] + tmp) * col_ro[i])
-                        Z[i] += b[k, i]
-
-                    L_new += log(Z[i])
-
-                L_new *= C
-
-                # Compute regularization term.
-                R_j_new = 0
-                for k in xrange(n_vectors):
-                    tmp = w[k, j] + d[k]
-                    R_j_new += tmp * tmp
-                R_j_new = sqrt(R_j_new)
-                # R_new = R - R_j + R_j_new
-
-                if n == 0:
-                    delta += R_j_new - R_j
-                    delta *= sigma
-
-                # Check decrease condition
-                if L_new - L + R_j_new - R_j <= delta:
-                    break
-                else:
-                    delta *= beta
-                    for k in xrange(n_vectors):
-                        d_old[k] = d[k]
-                        d[k] *= beta
-
-            # Update solution
-            for k in xrange(n_vectors):
-                w[k, j] += d[k]
+            loss.solve_l1l2_mc(j, n_samples, n_vectors, C,
+                               w, col_ro, y, b, g, d, d_old, Z)
 
 
 def _primal_cd_l2r(self,

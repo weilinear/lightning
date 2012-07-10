@@ -380,7 +380,8 @@ def test_fit_squared_loss():
 
 
 def test_l1l2_multiclass():
-    clf = PrimalLinearSVC(penalty="l1/l2", max_iter=5, C=1.0, random_state=0)
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+                          max_iter=5, C=1.0, random_state=0)
     clf.fit(mult_dense, mult_target)
     assert_almost_equal(clf.score(mult_dense, mult_target), 0.82666, 3)
     df = clf.decision_function(mult_dense)
@@ -390,7 +391,8 @@ def test_l1l2_multiclass():
     assert_array_almost_equal(clf.errors_, df.T, 4)
     assert_equal(np.sum(clf.coef_ != 0), 300)
 
-    clf = PrimalLinearSVC(penalty="l1/l2", max_iter=5, C=0.3, random_state=0)
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+                          max_iter=5, C=0.3, random_state=0)
     clf.fit(mult_dense, mult_target)
     assert_almost_equal(clf.score(mult_dense, mult_target), 0.8033, 3)
     nz = np.sum(clf.coef_ != 0)
