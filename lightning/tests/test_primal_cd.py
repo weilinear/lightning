@@ -17,12 +17,11 @@ from lightning.kernel_fast import get_kernel, KernelCache
 bin_dense, bin_target = make_classification(n_samples=200, n_features=100,
                                             n_informative=5,
                                             n_classes=2, random_state=0)
-bin_sparse = sp.csr_matrix(bin_dense)
 
 mult_dense, mult_target = make_classification(n_samples=300, n_features=100,
                                               n_informative=5,
                                               n_classes=3, random_state=0)
-mult_sparse = sp.csr_matrix(mult_dense)
+mult_csc = sp.csc_matrix(mult_dense)
 
 
 def test_fit_linear_binary_l1r():
@@ -380,43 +379,45 @@ def test_fit_squared_loss():
 
 
 def test_l1l2_multiclass_log_loss():
-    clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
-                          max_iter=5, C=1.0, random_state=0)
-    clf.fit(mult_dense, mult_target)
-    assert_almost_equal(clf.score(mult_dense, mult_target), 0.82666, 3)
-    df = clf.decision_function(mult_dense)
-    sel = np.array([df[i, int(mult_target[i])] for i in xrange(df.shape[0])])
-    df -= sel[:, np.newaxis]
-    df = np.exp(df)
-    assert_array_almost_equal(clf.errors_, df.T, 4)
-    assert_equal(np.sum(clf.coef_ != 0), 300)
+    for data in (mult_dense, mult_csc):
+        clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+                              max_iter=5, C=1.0, random_state=0)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.82666, 3)
+        df = clf.decision_function(data)
+        sel = np.array([df[i, int(mult_target[i])] for i in xrange(df.shape[0])])
+        df -= sel[:, np.newaxis]
+        df = np.exp(df)
+        assert_array_almost_equal(clf.errors_, df.T, 4)
+        assert_equal(np.sum(clf.coef_ != 0), 300)
 
-    clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
-                          max_iter=5, C=0.3, random_state=0)
-    clf.fit(mult_dense, mult_target)
-    assert_almost_equal(clf.score(mult_dense, mult_target), 0.8033, 3)
-    nz = np.sum(clf.coef_ != 0)
-    assert_equal(nz, 246)
-    assert_true(nz % 3 == 0) # should be a multiple of n_classes
+        clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+                              max_iter=5, C=0.3, random_state=0)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.8033, 3)
+        nz = np.sum(clf.coef_ != 0)
+        assert_equal(nz, 246)
+        assert_true(nz % 3 == 0) # should be a multiple of n_classes
 
 def test_l1l2_multiclass_squared_hinge_loss():
-    clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
-                          max_iter=20, C=1.0, random_state=0)
-    clf.fit(mult_dense, mult_target)
-    assert_almost_equal(clf.score(mult_dense, mult_target), 0.833, 3)
-    df = clf.decision_function(mult_dense)
-    n_samples, n_vectors = df.shape
-    diff = np.zeros_like(clf.errors_)
-    for i in xrange(n_samples):
-        for k in xrange(n_vectors):
-            diff[k, i] = 1 - (df[i, mult_target[i]] - df[i, k])
-    assert_array_almost_equal(clf.errors_, diff, 5)
-    assert_equal(np.sum(clf.coef_ != 0), 300)
+    for data in (mult_dense, mult_csc):
+        clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                              max_iter=20, C=1.0, random_state=0)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.833, 3)
+        df = clf.decision_function(data)
+        n_samples, n_vectors = df.shape
+        diff = np.zeros_like(clf.errors_)
+        for i in xrange(n_samples):
+            for k in xrange(n_vectors):
+                diff[k, i] = 1 - (df[i, mult_target[i]] - df[i, k])
+        assert_array_almost_equal(clf.errors_, diff, 5)
+        assert_equal(np.sum(clf.coef_ != 0), 300)
 
-    clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
-                          max_iter=20, C=0.05, random_state=0)
-    clf.fit(mult_dense, mult_target)
-    assert_almost_equal(clf.score(mult_dense, mult_target), 0.81, 3)
-    nz = np.sum(clf.coef_ != 0)
-    assert_equal(nz, 249)
-    assert_true(nz % 3 == 0) # should be a multiple of n_classes
+        clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                              max_iter=20, C=0.05, random_state=0)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.81, 3)
+        nz = np.sum(clf.coef_ != 0)
+        assert_equal(nz, 249)
+        assert_true(nz % 3 == 0) # should be a multiple of n_classes

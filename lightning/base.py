@@ -2,15 +2,20 @@
 # License: BSD
 
 import numpy as np
+import scipy.sparse as sp
 
 from sklearn.base import BaseEstimator
 from sklearn.utils import safe_mask
-from sklearn.preprocessing import LabelBinarizer, LabelEncoder
+from sklearn.utils.extmath import safe_sparse_dot
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import LabelEncoder
 
-from .predict_fast import predict_alpha, decision_function_alpha
+from .predict_fast import predict_alpha
+from .predict_fast import decision_function_alpha
 from .kernel_fast import get_kernel
 from .random import RandomState
 from .dataset_fast import FortranDataset
+from .dataset_fast import CSCDataset
 
 
 class BaseClassifier(BaseEstimator):
@@ -59,7 +64,7 @@ class BaseClassifier(BaseEstimator):
 class BaseLinearClassifier(BaseClassifier):
 
     def decision_function(self, X):
-        return np.dot(X, self.coef_.T) + self.intercept_
+        return safe_sparse_dot(X, self.coef_.T) + self.intercept_
 
     def predict(self, X):
         pred = self.decision_function(X)
@@ -71,7 +76,12 @@ class BaseLinearClassifier(BaseClassifier):
         return out
 
     def _get_dataset(self, X):
-        return FortranDataset(X)
+        if sp.isspmatrix_csc(X):
+            return CSCDataset(X)
+        elif np.isfortran(X):
+            return FortranDataset(X)
+        else:
+            raise ValueError("Not supported format for X.")
 
 
 class BaseKernelClassifier(BaseClassifier):

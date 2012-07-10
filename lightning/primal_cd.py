@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.base import ClassifierMixin, clone
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import check_random_state
+from sklearn.utils import safe_asarray
 
 from .base import BaseLinearClassifier, BaseKernelClassifier
 
@@ -58,7 +59,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         n_samples, n_features = X.shape
         rs = self._get_random_state()
 
-        X = np.asfortranarray(X, dtype=np.float64)
+        X = safe_asarray(X, dtype=np.float64, order="fortran")
 
         reencode = self.penalty == "l1/l2"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
