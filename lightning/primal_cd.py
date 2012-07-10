@@ -2,6 +2,7 @@
 # License: BSD
 
 import numpy as np
+import scipy.sparse as sp
 
 from sklearn.base import ClassifierMixin, clone
 from sklearn.preprocessing import LabelBinarizer
@@ -59,7 +60,10 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         n_samples, n_features = X.shape
         rs = self._get_random_state()
 
-        X = safe_asarray(X, dtype=np.float64, order="fortran")
+        if sp.isspmatrix(X):
+            X = X.tocsc()
+        else:
+            X = np.asfortranarray(X, dtype=np.float64)
 
         reencode = self.penalty == "l1/l2"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
