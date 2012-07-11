@@ -39,7 +39,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
                  max_iter=1000, tol=1e-3,
-                 termination="convergence", nz_coef_upper_bound=1000,
+                 termination="convergence", n_components=1000,
                  warm_start=False, random_state=None,
                  callback=None, verbose=0, n_jobs=1):
         self.C = C
@@ -48,7 +48,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         self.max_iter = max_iter
         self.tol = tol
         self.termination = termination
-        self.nz_coef_upper_bound = nz_coef_upper_bound
+        self.n_components = n_components
         self.warm_start = warm_start
         self.random_state = random_state
         self.callback = callback
@@ -93,7 +93,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                     _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
                                          self._get_dataset(X), Y[:, i],
                                          indices, "permute", 60,
-                                         self.termination, self.nz_coef_upper_bound,
+                                         self.termination, self.n_components,
                                          self.C, self.max_iter, rs, self.tol,
                                          self.callback, verbose=self.verbose)
                 else:
@@ -101,7 +101,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                                    self._get_dataset(X), Y[:, i],
                                    indices, self._get_loss(),
                                    "permute", 60,
-                                   self.termination, self.nz_coef_upper_bound,
+                                   self.termination, self.n_components,
                                    self.C, self.max_iter, rs, self.tol,
                                    self.callback, verbose=self.verbose)
 
