@@ -172,6 +172,20 @@ def test_fit_rbf_binary_l2r():
     assert_equal(n_nz, 200) # dense solution...
 
 
+def test_fit_linear_multi_l2r():
+    clf = PrimalLinearSVC(C=1.0, random_state=0, penalty="l2")
+    clf.fit(mult_dense, mult_target)
+    acc = clf.score(mult_dense, mult_target)
+    assert_almost_equal(acc, 0.9033, 4)
+
+
+def test_fit_rbf_multi_l2r():
+    clf = PrimalSVC(C=0.5, kernel="rbf", gamma=0.1, random_state=0, penalty="l2")
+    clf.fit(mult_dense, mult_target)
+    acc = clf.score(mult_dense, mult_target)
+    assert_almost_equal(acc, 1.0)
+
+
 def test_warm_start_l2r():
     clf = PrimalLinearSVC(warm_start=True, random_state=0, penalty="l2")
 

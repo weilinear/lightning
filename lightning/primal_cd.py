@@ -86,7 +86,8 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                              self.C, self.max_iter, rs, self.tol,
                              self.callback, self.verbose)
         else:
-            Y = self.label_binarizer_.transform(y)
+            Y = np.asfortranarray(self.label_binarizer_.transform(y))
+
             for i in xrange(n_vectors):
                 if self.penalty == "l1":
                     _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
@@ -149,7 +150,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
 
         reencode = self.penalty == "l1/l2"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
-        Y = self.label_binarizer_.fit_transform(y)
+        Y = np.asfortranarray(self.label_binarizer_.transform(y))
 
         A = X
         C = self.C
