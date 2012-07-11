@@ -90,8 +90,8 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
             for i in xrange(n_vectors):
                 if self.penalty == "l1":
                     _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
-                                         X, Y[:, i], indices, kcache, True,
-                                         "permute", 60,
+                                         self._get_dataset(X), Y[:, i],
+                                         indices, "permute", 60,
                                          self.termination, self.nz_coef_upper_bound,
                                          self.C, self.max_iter, rs, self.tol,
                                          self.callback, verbose=self.verbose)
@@ -188,8 +188,8 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         if self.penalty in ("l1", "l1l2"):
             for i in xrange(n_vectors):
                     _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
-                                         X, Y[:, i], indices, kcache, False,
-                                         self.selection, self.search_size,
+                                         self._get_dataset(X), Y[:, i],
+                                         indices, self.selection, self.search_size,
                                          self.termination, self.n_components,
                                          self.C, self.max_iter, rs, self.tol,
                                          self.callback, verbose=self.verbose)

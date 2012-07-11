@@ -22,6 +22,7 @@ from lightning.kernel_fast cimport KernelCache
 from lightning.kernel_fast cimport Kernel
 from lightning.select_fast cimport get_select_method
 from lightning.select_fast cimport select_sv_precomputed
+from lightning.select_fast cimport select_sv_precomputed2
 from lightning.random.random_fast cimport RandomState
 from lightning.dataset_fast cimport Dataset
 
@@ -803,11 +804,9 @@ cdef class Log(LossFunction):
 def _primal_cd_l2svm_l1r(self,
                          np.ndarray[double, ndim=1, mode='c'] w,
                          np.ndarray[double, ndim=1, mode='c'] b,
-                         X,
+                         Dataset X,
                          np.ndarray[double, ndim=1] y,
                          np.ndarray[int, ndim=1, mode='c'] index,
-                         KernelCache kcache,
-                         int linear_kernel,
                          selection,
                          int search_size,
                          termination,
@@ -819,19 +818,10 @@ def _primal_cd_l2svm_l1r(self,
                          callback,
                          int verbose):
 
-    cdef Py_ssize_t n_samples = X.shape[0]
-    cdef Py_ssize_t n_features = X.shape[1]
+    cdef Py_ssize_t n_samples = X.get_n_samples()
+    cdef Py_ssize_t n_features = index.shape[0]
 
-    cdef np.ndarray[double, ndim=2, mode='fortran'] Xf
-    cdef np.ndarray[double, ndim=2, mode='c'] Xc
-
-    if linear_kernel:
-        Xf = X
-    else:
-        Xc = X
-        n_features = n_samples
-
-    cdef int j, s, t, i = 0
+    cdef int j, s, t, i, ii = 0
     cdef int active_size = n_features
     cdef int max_num_linesearch = 20
 
@@ -850,26 +840,26 @@ def _primal_cd_l2svm_l1r(self,
     cdef double xj_sq
     cdef double wj_abs
 
-    cdef double* col_data
-    cdef double* col_ro
     cdef np.ndarray[double, ndim=1, mode='c'] col
     col = np.zeros(n_samples, dtype=np.float64)
-    col_data = <double*>col.data
-
-    cdef list[int].iterator it
 
     cdef int check_n_sv = termination == "n_components"
     cdef int check_convergence = termination == "convergence"
     cdef int stop = 0
     cdef int select_method = get_select_method(selection)
-    cdef int permute = selection == "permute" or linear_kernel
+    cdef int permute = selection == "permute"
     cdef int has_callback = callback is not None
 
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
+
+    cdef int n_sv = 0
+
     # FIXME: would be better to store the support indices in the class.
-    if not linear_kernel:
-        for j in xrange(n_features):
-            if w[j] != 0:
-                kcache.add_sv(j)
+    for j in xrange(n_features):
+        if w[j] != 0:
+            n_sv += 1
 
     for t in xrange(max_iter):
         if verbose >= 1:
@@ -886,23 +876,19 @@ def _primal_cd_l2svm_l1r(self,
             if permute:
                 j = index[s]
             else:
-                j = select_sv_precomputed(index, search_size,
-                                          active_size, select_method, b, kcache,
-                                          0, rs)
+                j = select_sv_precomputed2(index, search_size,
+                                           active_size, select_method, b, rs)
 
             Lj_zero = 0
             Lp = 0
             Lpp = 0
             xj_sq = 0
 
-            if linear_kernel:
-                col_ro = (<double*>Xf.data) + j * n_samples
-            else:
-                kcache.compute_column(Xc, Xc, j, col)
-                col_ro = col_data
+            X.get_column_ptr(j, &indices, &data, &n_nz)
 
-            for i in xrange(n_samples):
-                val = col_ro[i] * y[i]
+            for ii in xrange(n_nz):
+                i = indices[ii]
+                val = data[ii] * y[i]
                 col[i] = val
                 val_sq = val * val
                 if b[i] > 0:
@@ -970,7 +956,8 @@ def _primal_cd_l2svm_l1r(self,
 
                 # Avoid line search if possible.
                 if appxcond <= 0:
-                    for i in xrange(n_samples):
+                    for ii in xrange(n_nz):
+                        i = indices[ii]
                         # Need to remove the old z and had the new one.
                         b[i] += z_diff * col[i]
                     break
@@ -978,7 +965,8 @@ def _primal_cd_l2svm_l1r(self,
                 # Compute objective function value.
                 Lj_z = 0
 
-                for i in xrange(n_samples):
+                for ii in xrange(n_nz):
+                    i = indices[ii]
                     b_new = b[i] + z_diff * col[i]
                     b[i] = b_new
                     if b_new > 0:
@@ -997,17 +985,15 @@ def _primal_cd_l2svm_l1r(self,
 
             # end for num_linesearch
 
+            if w[j] == 0 and z != 0:
+                n_sv += 1
+            elif z != 0 and w[j] == -z:
+                n_sv -= 1
+
             w[j] += z
 
-            # Update support set.
-            if not linear_kernel:
-                if w[j] != 0:
-                    kcache.add_sv(j)
-                elif w[j] == 0:
-                    kcache.remove_sv(j)
-
             # Exit if necessary.
-            if check_n_sv and kcache.n_sv() >= n_components:
+            if check_n_sv and n_sv >= n_components:
                 stop = 1
                 break
 

@@ -29,3 +29,9 @@ cdef int select_sv_precomputed(np.ndarray[int, ndim=1, mode='c'] A,
                                int check_duplicates,
                                RandomState rs)
 
+cdef int select_sv_precomputed2(np.ndarray[int, ndim=1, mode='c'] A,
+                               int search_size,
+                               int max_size,
+                               int select_method,
+                               np.ndarray[double, ndim=1, mode='c'] errors,
+                               RandomState rs)

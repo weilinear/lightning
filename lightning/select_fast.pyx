@@ -113,3 +113,29 @@ cdef int select_sv_precomputed(np.ndarray[int, ndim=1, mode='c'] A,
             selected = s
 
     return selected
+
+cdef int select_sv_precomputed2(np.ndarray[int, ndim=1, mode='c'] A,
+                               int search_size,
+                               int max_size,
+                               int select_method,
+                               np.ndarray[double, ndim=1, mode='c'] errors,
+                               RandomState rs):
+
+    cdef int s
+    cdef double score
+    cdef double min_score = DBL_MAX
+    cdef int selected = 0
+
+    for i in xrange(search_size):
+        s = A[rs.randint(max_size - 1)]
+
+        if select_method == 2: # active
+            score = fabs(errors[s] - 1)
+        elif select_method == 3: # loss
+            score = -errors[s]
+
+        if score < min_score:
+            min_score = score
+            selected = s
+
+    return selected
