@@ -16,6 +16,7 @@ from .kernel_fast import get_kernel
 from .random import RandomState
 from .dataset_fast import FortranDataset
 from .dataset_fast import CSCDataset
+from .dataset_fast import KernelDataset
 
 
 class BaseClassifier(BaseEstimator):
@@ -124,6 +125,10 @@ class BaseKernelClassifier(BaseClassifier):
 
     def _get_kernel(self):
         return get_kernel(self.kernel, **self._kernel_params())
+
+    def _get_dataset(self, X):
+        return KernelDataset(X, X, self.kernel,
+                             self.gamma, self.coef0, self.degree)
 
     def _post_process(self, X):
         # We can't know the support vectors when using precomputed kernels.

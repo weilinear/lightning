@@ -421,3 +421,21 @@ def test_l1l2_multiclass_squared_hinge_loss():
         nz = np.sum(clf.coef_ != 0)
         assert_equal(nz, 249)
         assert_true(nz % 3 == 0) # should be a multiple of n_classes
+
+
+def test_l1l2_multiclass_squared_hinge_loss_kernel():
+    for data in (mult_dense, ):
+        clf = PrimalSVC(penalty="l1/l2", loss="squared_hinge",
+                        kernel="rbf", gamma=0.1,
+                        max_iter=20, C=1.0, random_state=0)
+        clf.fit(data, mult_target)
+        assert_equal(clf.score(data, mult_target), 1.0)
+        assert_equal(clf.n_support_vectors(), 300)
+
+        clf = PrimalSVC(penalty="l1/l2", loss="squared_hinge",
+                        kernel="rbf", gamma=0.1,
+                        max_iter=20, C=0.3, random_state=0)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.67)
+        assert_equal(clf.n_support_vectors(), 201)
+        assert_true(clf.n_support_vectors() % 3 == 0)

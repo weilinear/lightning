@@ -147,10 +147,9 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         rs = self._get_random_state()
         X = np.ascontiguousarray(X, dtype=np.float64)
 
-        self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
+        reencode = self.penalty == "l1/l2"
+        y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
         Y = self.label_binarizer_.fit_transform(y)
-        self.classes_ = self.label_binarizer_.classes_.astype(np.int32)
-        n_vectors = Y.shape[1]
 
         A = X
         C = self.C
@@ -177,6 +176,14 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
 
         self.support_vectors_ = X
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
+
+        if self.penalty == "l1/l2":
+            _primal_cd_l1l2r(self,
+                             self.coef_, self.errors_,
+                             self._get_dataset(X), y,
+                             indices, self._get_loss(), kcache, True,
+                             self.C, self.max_iter, rs, self.tol,
+                             self.callback, self.verbose)
 
         if self.penalty in ("l1", "l1l2"):
             for i in xrange(n_vectors):
