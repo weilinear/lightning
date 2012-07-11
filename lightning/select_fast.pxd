@@ -21,17 +21,8 @@ cdef int select_sv(np.ndarray[int, ndim=1, mode='c'] A,
                    RandomState rs)
 
 cdef int select_sv_precomputed(np.ndarray[int, ndim=1, mode='c'] A,
-                               int search_size,
-                               int max_size,
-                               int select_method,
-                               np.ndarray[double, ndim=1, mode='c'] errors,
-                               KernelCache kcache,
-                               int check_duplicates,
-                               RandomState rs)
-
-cdef int select_sv_precomputed2(np.ndarray[int, ndim=1, mode='c'] A,
-                               int search_size,
-                               int max_size,
-                               int select_method,
-                               np.ndarray[double, ndim=1, mode='c'] errors,
-                               RandomState rs)
+                              int search_size,
+                              int max_size,
+                              int select_method,
+                              np.ndarray[double, ndim=1, mode='c'] errors,
+                              RandomState rs)

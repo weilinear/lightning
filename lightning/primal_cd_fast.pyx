@@ -22,7 +22,6 @@ from lightning.kernel_fast cimport KernelCache
 from lightning.kernel_fast cimport Kernel
 from lightning.select_fast cimport get_select_method
 from lightning.select_fast cimport select_sv_precomputed
-from lightning.select_fast cimport select_sv_precomputed2
 from lightning.random.random_fast cimport RandomState
 from lightning.dataset_fast cimport Dataset
 
@@ -874,8 +873,8 @@ def _primal_cd_l2svm_l1r(self,
             if permute:
                 j = index[s]
             else:
-                j = select_sv_precomputed2(index, search_size,
-                                           active_size, select_method, b, rs)
+                j = select_sv_precomputed(index, search_size,
+                                          active_size, select_method, b, rs)
 
             Lj_zero = 0
             Lp = 0
@@ -1140,8 +1139,8 @@ def _primal_cd_l2r(self,
             if permute:
                 j = index[s]
             else:
-                j = select_sv_precomputed2(index, search_size,
-                                          n_features, select_method, b, rs)
+                j = select_sv_precomputed(index, search_size,
+                                         n_features, select_method, b, rs)
 
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
