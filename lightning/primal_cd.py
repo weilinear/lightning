@@ -98,8 +98,8 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                                          self.callback, verbose=self.verbose)
                 else:
                     _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                                   X, None, Y[:, i], indices,
-                                   self._get_loss(), kcache, True,
+                                   self._get_dataset(X), Y[:, i],
+                                   indices, self._get_loss(),
                                    "permute", 60,
                                    self.termination, self.nz_coef_upper_bound,
                                    self.C, self.max_iter, rs, self.tol,
@@ -198,8 +198,8 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         if self.penalty in ("l2", "l2l2"):
             for i in xrange(n_vectors):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               X, A, Y[:, i], indices,
-                               self._get_loss(), kcache, False,
+                               self._get_dataset(X, A), Y[:, i],
+                               indices, self._get_loss(),
                                self.selection, self.search_size,
                                termination, self.n_components,
                                C, self.max_iter, rs, self.tol,
@@ -220,8 +220,8 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
 
             for i in xrange(n_vectors):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               X, A, Y[:, i], indices,
-                               self._get_loss(), kcache, False,
+                               self._get_dataset(X, A), Y[:, i],
+                               indices, self._get_loss(),
                                selection, self.search_size,
                                termination, self.n_components,
                                C, self.max_iter, rs, self.tol,

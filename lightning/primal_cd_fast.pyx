@@ -41,10 +41,11 @@ cdef class LossFunction:
 
     cdef void solve_l2(self,
                        int j,
-                       int n_samples,
                        double C,
                        double *w,
-                       double *col_ro,
+                       int *indices,
+                       double *data,
+                       int n_nz,
                        double *col,
                        double *y,
                        double *b,
@@ -54,50 +55,29 @@ cdef class LossFunction:
         cdef double beta = 0.5
         cdef double bound, Dpp, Dj_zero, z, d
 
-        self.derivatives_l2(j,
-                            n_samples,
-                            C,
-                            sigma,
-                            w,
-                            col_ro,
-                            col,
-                            y,
-                            b,
-                            Dp,
-                            &Dpp,
-                            &Dj_zero,
-                            &bound)
+        self.derivatives_l2(j, C, sigma, w,
+                            indices, data, n_nz, col, y, b,
+                            Dp, &Dpp, &Dj_zero, &bound)
 
         if fabs(Dp[0]/Dpp) <= 1e-12:
             return
 
         d = -Dp[0] / Dpp
 
-        z = self.line_search_l2(j,
-                                n_samples,
-                                d,
-                                C,
-                                sigma,
-                                beta,
-                                w,
-                                col_ro,
-                                col,
-                                y,
-                                b,
-                                Dp[0],
-                                Dpp,
-                                Dj_zero,
-                                bound)
+        z = self.line_search_l2(j, d, C, sigma, beta,
+                                w, indices, data, n_nz, col, y, b,
+                                Dp[0], Dpp, Dj_zero, bound)
 
         w[j] += z
 
     cdef void derivatives_l2(self,
                              int j,
-                             int n_samples,
                              double C,
                              double sigma,
                              double *w,
-                             double *col_ro,
+                             int *indices,
+                             double *data,
+                             int n_nz,
                              double *col,
                              double *y,
                              double *b,
@@ -109,13 +89,14 @@ cdef class LossFunction:
 
     cdef double line_search_l2(self,
                                int j,
-                               int n_samples,
                                double d,
                                double C,
                                double sigma,
                                double beta,
                                double *w,
-                               double *col_ro,
+                               int *indices,
+                               double *data,
+                               int n_nz,
                                double *col,
                                double *y,
                                double *b,
@@ -230,29 +211,31 @@ cdef class Squared(LossFunction):
 
     cdef void solve_l2(self,
                        int j,
-                       int n_samples,
                        double C,
                        double *w,
-                       double *col_ro,
+                       int *indices,
+                       double *data,
+                       int n_nz,
                        double *col,
                        double *y,
                        double *b,
                        double *Dp):
-        cdef int i
+        cdef int i, ii
         cdef double pred, num, denom, old_w, val, z
 
         num = 0
         denom = 0
         Dp[0] = 0
 
-        for i in xrange(n_samples):
-            val = col_ro[i] * y[i]
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            val = data[ii] * y[i]
             col[i] = val
 
             Dp[0] -= b[i] * val
             pred = (1 - b[i]) * y[i]
-            denom += col_ro[i] * col_ro[i]
-            num += (y[i] - pred) * col_ro[i]
+            denom += data[ii] * data[ii]
+            num += (y[i] - pred) * data[ii]
 
         denom *= 2 * C
         denom += 1
@@ -265,7 +248,8 @@ cdef class Squared(LossFunction):
         z = num/denom
         w[j] += z
 
-        for i in xrange(n_samples):
+        for ii in xrange(n_nz):
+            i = indices[ii]
             b[i] -= z * col[i]
 
 
@@ -275,11 +259,12 @@ cdef class SquaredHinge(LossFunction):
 
     cdef void derivatives_l2(self,
                              int j,
-                             int n_samples,
                              double C,
                              double sigma,
                              double *w,
-                             double *col_ro,
+                             int *indices,
+                             double *data,
+                             int n_nz,
                              double *col,
                              double *y,
                              double *b,
@@ -287,7 +272,7 @@ cdef class SquaredHinge(LossFunction):
                              double *Dpp,
                              double *Dj_zero,
                              double *bound):
-        cdef int i
+        cdef int i, ii
         cdef double xj_sq = 0
         cdef double val
 
@@ -295,8 +280,9 @@ cdef class SquaredHinge(LossFunction):
         Dpp[0] = 0
         Dj_zero[0] = 0
 
-        for i in xrange(n_samples):
-            val = col_ro[i] * y[i]
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            val = data[ii] * y[i]
             col[i] = val
             xj_sq += val * val
 
@@ -313,13 +299,14 @@ cdef class SquaredHinge(LossFunction):
 
     cdef double line_search_l2(self,
                                int j,
-                               int n_samples,
                                double d,
                                double C,
                                double sigma,
                                double beta,
                                double *w,
-                               double *col_ro,
+                               int *indices,
+                               double *data,
+                               int n_nz,
                                double *col,
                                double *y,
                                double *b,
@@ -327,7 +314,7 @@ cdef class SquaredHinge(LossFunction):
                                double Dpp,
                                double Dj_zero,
                                double bound):
-        cdef int step
+        cdef int i, ii, step
         cdef double z_diff, z_old, z, Dj_z, b_new, cond
 
         z_old = 0
@@ -338,13 +325,15 @@ cdef class SquaredHinge(LossFunction):
 
             # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
             if Dp/z + bound <= 0:
-                for i in xrange(n_samples):
+                for ii in xrange(n_nz):
+                    i = indices[ii]
                     b[i] += z_diff * col[i]
                 break
 
             Dj_z = 0
 
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
                 b_new = b[i] + z_diff * col[i]
                 b[i] = b_new
                 if b_new > 0:
@@ -488,11 +477,12 @@ cdef class ModifiedHuber(LossFunction):
 
     cdef void derivatives_l2(self,
                              int j,
-                             int n_samples,
                              double C,
                              double sigma,
                              double *w,
-                             double *col_ro,
+                             int *indices,
+                             double *data,
+                             int n_nz,
                              double *col,
                              double *y,
                              double *b,
@@ -500,7 +490,7 @@ cdef class ModifiedHuber(LossFunction):
                              double *Dpp,
                              double *Dj_zero,
                              double *bound):
-        cdef int i
+        cdef int i, ii
         cdef double xj_sq = 0
         cdef double val
 
@@ -508,8 +498,9 @@ cdef class ModifiedHuber(LossFunction):
         Dpp[0] = 0
         Dj_zero[0] = 0
 
-        for i in xrange(n_samples):
-            val = col_ro[i] * y[i]
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            val = data[ii] * y[i]
             col[i] = val
             xj_sq += val * val
 
@@ -531,13 +522,14 @@ cdef class ModifiedHuber(LossFunction):
 
     cdef double line_search_l2(self,
                                int j,
-                               int n_samples,
                                double d,
                                double C,
                                double sigma,
                                double beta,
                                double *w,
-                               double *col_ro,
+                               int *indices,
+                               double *data,
+                               int n_nz,
                                double *col,
                                double *y,
                                double *b,
@@ -545,7 +537,7 @@ cdef class ModifiedHuber(LossFunction):
                                double Dpp,
                                double Dj_zero,
                                double bound):
-        cdef int step
+        cdef int i, ii, step
         cdef double z_diff, z_old, z, Dj_z, b_new, cond
 
         z_old = 0
@@ -556,13 +548,15 @@ cdef class ModifiedHuber(LossFunction):
 
             # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
             if Dp/z + bound <= 0:
-                for i in xrange(n_samples):
+                for ii in xrange(n_nz):
+                    i = indices[ii]
                     b[i] += z_diff * col[i]
                 break
 
             Dj_z = 0
 
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
                 b_new = b[i] + z_diff * col[i]
                 b[i] = b_new
 
@@ -595,11 +589,12 @@ cdef class Log(LossFunction):
 
     cdef void derivatives_l2(self,
                              int j,
-                             int n_samples,
                              double C,
                              double sigma,
                              double *w,
-                             double *col_ro,
+                             int *indices,
+                             double *data,
+                             int n_nz,
                              double *col,
                              double *y,
                              double *b,
@@ -607,7 +602,7 @@ cdef class Log(LossFunction):
                              double *Dpp,
                              double *Dj_zero,
                              double *bound):
-        cdef int i
+        cdef int i, ii
         cdef double xj_sq = 0
         cdef double val, tau, exppred
 
@@ -615,8 +610,9 @@ cdef class Log(LossFunction):
         Dpp[0] = 0
         Dj_zero[0] = 0
 
-        for i in xrange(n_samples):
-            val = col_ro[i] * y[i]
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            val = data[ii] * y[i]
             col[i] = val
 
             exppred = 1 + 1 / b[i]
@@ -633,13 +629,14 @@ cdef class Log(LossFunction):
 
     cdef double line_search_l2(self,
                                int j,
-                               int n_samples,
                                double d,
                                double C,
                                double sigma,
                                double beta,
                                double *w,
-                               double *col_ro,
+                               int *indices,
+                               double *data,
+                               int n_nz,
                                double *col,
                                double *y,
                                double *b,
@@ -647,7 +644,7 @@ cdef class Log(LossFunction):
                                double Dpp,
                                double Dj_zero,
                                double bound):
-        cdef int step
+        cdef int i, ii, step
         cdef double z_diff, z_old, z, Dj_z, exppred, cond
 
         z_old = 0
@@ -657,7 +654,8 @@ cdef class Log(LossFunction):
             z_diff = z - z_old
             Dj_z = 0
 
-            for i in xrange(n_samples):
+            for ii in xrange(n_nz):
+                i = indices[ii]
                 b[i] *= exp(z_diff * col[i])
                 exppred = 1 + 1 / b[i]
                 Dj_z += log(exppred)
@@ -1092,13 +1090,10 @@ def _primal_cd_l1l2r(self,
 def _primal_cd_l2r(self,
                    np.ndarray[double, ndim=1, mode='c'] w,
                    np.ndarray[double, ndim=1, mode='c'] b,
-                   X,
-                   A,
+                   Dataset X,
                    np.ndarray[double, ndim=1] y,
                    np.ndarray[int, ndim=1, mode='c'] index,
                    LossFunction loss,
-                   KernelCache kcache,
-                   int linear_kernel,
                    selection,
                    int search_size,
                    termination,
@@ -1110,38 +1105,24 @@ def _primal_cd_l2r(self,
                    callback,
                    int verbose):
 
-    cdef Py_ssize_t n_samples = X.shape[0]
-    cdef Py_ssize_t n_features = X.shape[1]
+    cdef int n_samples = X.get_n_samples()
+    cdef int n_features = index.shape[0]
 
-    cdef np.ndarray[double, ndim=2, mode='fortran'] Xf
-    cdef np.ndarray[double, ndim=2, mode='c'] Xc
-    cdef np.ndarray[double, ndim=2, mode='c'] Ac
-
-    if linear_kernel:
-        Xf = X
-    else:
-        Xc = X
-        Ac = A
-        n_features = index.shape[0]
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
 
     cdef int i, j, s, t
     cdef double Dp, Dpmax
 
     cdef np.ndarray[double, ndim=1, mode='c'] col
     col = np.zeros(n_samples, dtype=np.float64)
-    # Container to store X[i, j] * y[i] for all i.
-    cdef double *col_ptr = <double*>col.data
-
-    cdef np.ndarray[double, ndim=1, mode='c'] col_ro
-    col_ro = np.zeros(n_samples, dtype=np.float64)
-    # Pointer to X[i, j] for all i (read-only).
-    cdef double *col_ro_ptr = <double*>col_ro.data
 
     cdef int check_n_sv = termination == "n_components"
     cdef int check_convergence = termination == "convergence"
     cdef int has_callback = callback is not None
     cdef int select_method = get_select_method(selection)
-    cdef int permute = selection == "permute" or linear_kernel
+    cdef int permute = selection == "permute"
     cdef int stop = 0
     cdef int n_sv = 0
 
@@ -1159,21 +1140,16 @@ def _primal_cd_l2r(self,
             if permute:
                 j = index[s]
             else:
-                j = select_sv_precomputed(index, search_size,
-                                          n_features, select_method, b, kcache,
-                                          0, rs)
+                j = select_sv_precomputed2(index, search_size,
+                                          n_features, select_method, b, rs)
 
-            if linear_kernel:
-                col_ro_ptr = (<double*>Xf.data) + j * n_samples
-            else:
-                kcache.compute_column(Xc, Ac, j, col_ro)
+            X.get_column_ptr(j, &indices, &data, &n_nz)
 
             loss.solve_l2(j,
-                          n_samples,
                           C,
                           <double*>w.data,
-                          col_ro_ptr,
-                          col_ptr,
+                          indices, data, n_nz,
+                          <double*>col.data,
                           <double*>y.data,
                           <double*>b.data,
                           &Dp)

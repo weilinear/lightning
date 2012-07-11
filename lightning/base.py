@@ -126,8 +126,10 @@ class BaseKernelClassifier(BaseClassifier):
     def _get_kernel(self):
         return get_kernel(self.kernel, **self._kernel_params())
 
-    def _get_dataset(self, X):
-        return KernelDataset(X, X, self.kernel,
+    def _get_dataset(self, X, Y=None):
+        if Y is None:
+            Y = X
+        return KernelDataset(X, Y, self.kernel,
                              self.gamma, self.coef0, self.degree,
                              self.cache_mb, 1, self.verbose)
 
