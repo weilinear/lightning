@@ -128,7 +128,8 @@ class BaseKernelClassifier(BaseClassifier):
 
     def _get_dataset(self, X):
         return KernelDataset(X, X, self.kernel,
-                             self.gamma, self.coef0, self.degree)
+                             self.gamma, self.coef0, self.degree,
+                             self.cache_mb, 1, self.verbose)
 
     def _post_process(self, X):
         # We can't know the support vectors when using precomputed kernels.
