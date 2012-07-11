@@ -38,13 +38,14 @@ class BaseSVC(object):
 class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
-                 max_iter=1000, tol=1e-3,
+                 debiasing=False, max_iter=1000, tol=1e-3,
                  termination="convergence", n_components=1000,
                  warm_start=False, random_state=None,
                  callback=None, verbose=0, n_jobs=1):
         self.C = C
         self.loss = loss
         self.penalty = penalty
+        self.debiasing = debiasing
         self.max_iter = max_iter
         self.tol = tol
         self.termination = termination
@@ -111,7 +112,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l1",
-                 max_iter=10, tol=1e-3,
+                 debiasing=False, max_iter=10, tol=1e-3,
                  kernel="linear", gamma=0.1, coef0=1, degree=4,
                  Cd=1.0, warm_debiasing=False,
                  selection="permute", search_size=60,
@@ -121,6 +122,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         self.C = C
         self.loss = loss
         self.penalty = penalty
+        self.debiasing = debiasing
         self.max_iter = max_iter
         self.tol = tol
         self.kernel = kernel
@@ -186,7 +188,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
                              self.C, self.max_iter, rs, self.tol,
                              self.callback, self.verbose)
 
-        if self.penalty in ("l1", "l1l2"):
+        if self.penalty == "l1":
             for i in xrange(n_vectors):
                     _primal_cd_l2svm_l1r(self, self.coef_[i], self.errors_[i],
                                          self._get_dataset(X), Y[:, i],
@@ -195,7 +197,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
                                          self.C, self.max_iter, rs, self.tol,
                                          self.callback, verbose=self.verbose)
 
-        if self.penalty in ("l2", "l2l2"):
+        if self.penalty == "l2":
             for i in xrange(n_vectors):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
                                self._get_dataset(X, A), Y[:, i],
@@ -205,7 +207,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
                                C, self.max_iter, rs, self.tol,
                                self.callback, verbose=self.verbose)
 
-        if self.penalty in ("l1l2", "l2l2"):
+        if self.debiasing:
             sv = np.sum(self.coef_ != 0, axis=0, dtype=bool)
             self.support_indices_ = np.arange(n_samples, dtype=np.int32)[sv]
             indices = self.support_indices_.copy()

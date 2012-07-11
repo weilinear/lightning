@@ -212,8 +212,8 @@ def test_warm_start_l2r_rbf():
 
 
 def test_debiasing():
-    clf = PrimalSVC(kernel="rbf", gamma=0.1, penalty="l1l2", C=0.5, Cd=1.0,
-                    max_iter=10)
+    clf = PrimalSVC(kernel="rbf", gamma=0.1, penalty="l1", debiasing=True,
+                    C=0.5, Cd=1.0, max_iter=10)
     clf.fit(bin_dense, bin_target)
     assert_equal(clf.n_support_vectors(), 160)
     assert_almost_equal(clf.score(bin_dense, bin_target), 0.845)
@@ -276,7 +276,8 @@ def test_empty_model():
     acc = clf.score(bin_dense, bin_target)
     assert_equal(acc, 0.5)
 
-    clf = PrimalSVC(kernel="rbf", gamma=0.1, C=0.1, penalty="l1l2")
+    clf = PrimalSVC(kernel="rbf", gamma=0.1, C=0.1, penalty="l1",
+                    debiasing=True)
     clf.fit(bin_dense, bin_target)
     assert_equal(clf.n_support_vectors(), 0)
     acc = clf.score(bin_dense, bin_target)
