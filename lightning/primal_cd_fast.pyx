@@ -53,7 +53,10 @@ cdef class LossFunction:
         cdef double sigma = 0.01
         cdef double beta = 0.5
         cdef double bound, Dpp, Dj_zero, z, d
+        cdef int i, ii, step
+        cdef double z_diff, z_old, Dj_z, cond
 
+        # Compute derivatives
         self.derivatives_l2(j, C, sigma, w,
                             indices, data, n_nz, col, y, b,
                             Dp, &Dpp, &Dj_zero, &bound)
@@ -63,9 +66,36 @@ cdef class LossFunction:
 
         d = -Dp[0] / Dpp
 
-        z = self.line_search_l2(j, d, C, sigma, beta,
-                                w, indices, data, n_nz, col, y, b,
-                                Dp[0], Dpp, Dj_zero, bound)
+        # Perform line search
+        z_old = 0
+        z = d
+
+        for step in xrange(100):
+            z_diff = z_old - z
+
+            # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
+            if bound > 0 and Dp[0]/z + bound <= 0:
+                for ii in xrange(n_nz):
+                    i = indices[ii]
+                    b[i] += z_diff * col[i]
+                break
+
+            # Update old predictions
+            self.update_l2(j, z_diff, C,
+                           indices, data, n_nz, col, y, b, &Dj_z)
+
+            z_old = z
+
+            #   0.5 * (w + z e_j)^T (w + z e_j)
+            # = 0.5 * w^T w + w_j z + 0.5 z^2
+            cond = w[j] * z + (0.5 + sigma) * z * z
+
+            cond += Dj_z - Dj_zero
+
+            if cond <= 0:
+                break
+            else:
+                z *= beta
 
         w[j] += z
 
@@ -86,23 +116,17 @@ cdef class LossFunction:
                              double *bound):
         raise NotImplementedError()
 
-    cdef double line_search_l2(self,
-                               int j,
-                               double d,
-                               double C,
-                               double sigma,
-                               double beta,
-                               double *w,
-                               int *indices,
-                               double *data,
-                               int n_nz,
-                               double *col,
-                               double *y,
-                               double *b,
-                               double Dp,
-                               double Dpp,
-                               double Dj_zero,
-                               double bound):
+    cdef void update_l2(self,
+                        int j,
+                        double z_diff,
+                        double C,
+                        int *indices,
+                        double *data,
+                        int n_nz,
+                        double *col,
+                        double *y,
+                        double *b,
+                        double *Dj_z):
         raise NotImplementedError()
 
     # L1/L2 regularization (multiclass)
@@ -312,64 +336,31 @@ cdef class SquaredHinge(LossFunction):
 
         Dj_zero[0] *= C
 
-    cdef double line_search_l2(self,
-                               int j,
-                               double d,
-                               double C,
-                               double sigma,
-                               double beta,
-                               double *w,
-                               int *indices,
-                               double *data,
-                               int n_nz,
-                               double *col,
-                               double *y,
-                               double *b,
-                               double Dp,
-                               double Dpp,
-                               double Dj_zero,
-                               double bound):
-        cdef int i, ii, step
-        cdef double z_diff, z_old, z, Dj_z, b_new, cond
+    cdef void update_l2(self,
+                        int j,
+                        double z_diff,
+                        double C,
+                        int *indices,
+                        double *data,
+                        int n_nz,
+                        double *col,
+                        double *y,
+                        double *b,
+                        double *Dj_z):
+        cdef int i, ii
+        cdef double b_new
 
-        z_old = 0
-        z = d
+        Dj_z[0] = 0
 
-        for step in xrange(100):
-            z_diff = z_old - z
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            b_new = b[i] + z_diff * col[i]
+            b[i] = b_new
+            if b_new > 0:
+                Dj_z[0] += b_new * b_new
 
-            # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
-            if Dp/z + bound <= 0:
-                for ii in xrange(n_nz):
-                    i = indices[ii]
-                    b[i] += z_diff * col[i]
-                break
+        Dj_z[0] *= C
 
-            Dj_z = 0
-
-            for ii in xrange(n_nz):
-                i = indices[ii]
-                b_new = b[i] + z_diff * col[i]
-                b[i] = b_new
-                if b_new > 0:
-                    Dj_z += b_new * b_new
-
-            Dj_z *= C
-
-            z_old = z
-
-            #   0.5 * (w + z e_j)^T (w + z e_j)
-            # = 0.5 * w^T w + w_j z + 0.5 z^2
-            cond = w[j] * z + (0.5 + sigma) * z * z
-
-            cond += Dj_z - Dj_zero
-
-            if cond <= 0:
-                break
-            else:
-                z *= beta
-
-        return z
 
     # L1/L2 regularization (multi-class)
 
@@ -503,68 +494,33 @@ cdef class ModifiedHuber(LossFunction):
 
         Dj_zero[0] *= C
 
+    cdef void update_l2(self,
+                        int j,
+                        double z_diff,
+                        double C,
+                        int *indices,
+                        double *data,
+                        int n_nz,
+                        double *col,
+                        double *y,
+                        double *b,
+                        double *Dj_z):
+        cdef int i, ii
+        cdef double b_new
 
-    cdef double line_search_l2(self,
-                               int j,
-                               double d,
-                               double C,
-                               double sigma,
-                               double beta,
-                               double *w,
-                               int *indices,
-                               double *data,
-                               int n_nz,
-                               double *col,
-                               double *y,
-                               double *b,
-                               double Dp,
-                               double Dpp,
-                               double Dj_zero,
-                               double bound):
-        cdef int i, ii, step
-        cdef double z_diff, z_old, z, Dj_z, b_new, cond
+        Dj_z[0] = 0
 
-        z_old = 0
-        z = d
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            b_new = b[i] + z_diff * col[i]
+            b[i] = b_new
 
-        for step in xrange(100):
-            z_diff = z_old - z
+            if b_new > 2:
+                Dj_z[0] += 4 * (b[i] - 1)
+            elif b_new > 0:
+                Dj_z[0] += b_new * b_new
 
-            # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
-            if Dp/z + bound <= 0:
-                for ii in xrange(n_nz):
-                    i = indices[ii]
-                    b[i] += z_diff * col[i]
-                break
-
-            Dj_z = 0
-
-            for ii in xrange(n_nz):
-                i = indices[ii]
-                b_new = b[i] + z_diff * col[i]
-                b[i] = b_new
-
-                if b_new > 2:
-                    Dj_z += 4 * (b[i] - 1)
-                elif b_new > 0:
-                    Dj_z += b_new * b_new
-
-            Dj_z *= C
-
-            z_old = z
-
-            #   0.5 * (w + z e_j)^T (w + z e_j)
-            # = 0.5 * w^T w + w_j z + 0.5 z^2
-            cond = w[j] * z + (0.5 + sigma) * z * z
-
-            cond += Dj_z - Dj_zero
-
-            if cond <= 0:
-                break
-            else:
-                z *= beta
-
-        return z
+        Dj_z[0] *= C
 
 
 cdef class Log(LossFunction):
@@ -607,59 +563,34 @@ cdef class Log(LossFunction):
 
         Dp[0] = w[j] + C * Dp[0]
         Dpp[0] = 1 + C * Dpp[0]
-
         Dj_zero[0] *= C
+        bound[0] = 0
 
 
-    cdef double line_search_l2(self,
-                               int j,
-                               double d,
-                               double C,
-                               double sigma,
-                               double beta,
-                               double *w,
-                               int *indices,
-                               double *data,
-                               int n_nz,
-                               double *col,
-                               double *y,
-                               double *b,
-                               double Dp,
-                               double Dpp,
-                               double Dj_zero,
-                               double bound):
-        cdef int i, ii, step
-        cdef double z_diff, z_old, z, Dj_z, exppred, cond
+    cdef void update_l2(self,
+                        int j,
+                        double z_diff,
+                        double C,
+                        int *indices,
+                        double *data,
+                        int n_nz,
+                        double *col,
+                        double *y,
+                        double *b,
+                        double *Dj_z):
+        cdef int i, ii
+        cdef double exppred
 
-        z_old = 0
-        z = d
+        Dj_z[0] = 0
 
-        for step in xrange(100):
-            z_diff = z - z_old
-            Dj_z = 0
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            b[i] /= exp(z_diff * col[i])
+            exppred = 1 + 1 / b[i]
+            Dj_z[0] += log(exppred)
 
-            for ii in xrange(n_nz):
-                i = indices[ii]
-                b[i] *= exp(z_diff * col[i])
-                exppred = 1 + 1 / b[i]
-                Dj_z += log(exppred)
+        Dj_z[0] *= C
 
-            Dj_z *= C
-
-            z_old = z
-
-            #   0.5 * (w + z e_j)^T (w + z e_j)
-            # = 0.5 * w^T w + w_j z + 0.5 z^2
-            cond = w[j] * z + (0.5 + sigma) * z * z
-
-            cond += Dj_z - Dj_zero
-
-            if cond <= 0:
-                break
-            else:
-                z *= beta
-
-        return z
 
     # L1/L2 regulariztion (multiclass)
 
