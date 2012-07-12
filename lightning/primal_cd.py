@@ -75,6 +75,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         if not self.warm_start or self.coef_ is None:
             self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
             self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
+
         self.intercept_ = 0
 
         indices = np.arange(n_features, dtype=np.int32)
@@ -88,6 +89,9 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                              self.callback, self.verbose)
         else:
             Y = np.asfortranarray(self.label_binarizer_.transform(y))
+
+            if self.loss == "squared":
+                self.errors_ -= 1 + Y.T
 
             for i in xrange(n_vectors):
                 if self.penalty == "l1":
@@ -170,6 +174,9 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         else:
             self.coef_ = np.zeros((n_vectors, A.shape[0]), dtype=np.float64)
             self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
+
+            if self.loss == "squared":
+                self.errors_ -= 1 + Y.T
 
         indices = np.arange(A.shape[0], dtype=np.int32)
 

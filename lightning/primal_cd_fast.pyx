@@ -378,36 +378,26 @@ cdef class Squared(LossFunction):
                        double *b,
                        double *Dp):
         cdef int i, ii
-        cdef double pred, num, denom, old_w, val, z
+        cdef double Dpp, old_w, z
 
-        num = 0
-        denom = 0
+        Dpp = 0
         Dp[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            val = data[ii] * y[i]
-            col[i] = val
+            Dpp += data[ii] * data[ii]
+            Dp[0] += b[i] * data[ii]
 
-            Dp[0] -= b[i] * val
-            pred = (1 - b[i]) * y[i]
-            denom += data[ii] * data[ii]
-            num += (y[i] - pred) * data[ii]
-
-        denom *= 2 * C
-        denom += 1
-        num *= 2 * C
-
-        Dp[0] = w[j] + 2 * C * Dp[0]
-        num -= w[j]
+        Dpp = 2 * C * Dpp + 1
+        Dp[0] = 2 * C * Dp[0] + w[j]
 
         old_w = w[j]
-        z = num/denom
+        z = -Dp[0] / Dpp
         w[j] += z
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            b[i] -= z * col[i]
+            b[i] += z * data[ii]
 
 
 cdef class SquaredHinge(LossFunction):
