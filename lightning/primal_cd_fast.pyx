@@ -122,8 +122,9 @@ cdef class LossFunction:
                             np.ndarray[double, ndim=1, mode='c'] d_old,
                             np.ndarray[double, ndim=1, mode='c'] Z):
 
-        cdef int i, k
+        cdef int i, k, ii, n
         cdef double scaling, delta, L, R_j, Lpp_max
+        cdef double tmp, L_new, R_j_new
 
         cdef int max_num_linesearch = 20
         cdef double beta = 0.5
@@ -156,10 +157,32 @@ cdef class LossFunction:
             delta += d[k] * g[k]
 
         # Perform line search.
-        self.line_search_l1l2_mc(j, C, w, n_vectors,
-                                 indices, data, n_nz, y, b, g, d, d_old, Z,
-                                 L, R_j, &delta,
-                                 max_num_linesearch, sigma, beta)
+        for n in xrange(max_num_linesearch):
+
+            # Update predictions, normalizations and objective value.
+            self.update_l1l2_mc(C, w, n_vectors,
+                                indices, data, n_nz, y, b, d, d_old, Z, &L_new)
+
+            # Compute regularization term.
+            R_j_new = 0
+            for k in xrange(n_vectors):
+                tmp = w[k, j] + d[k]
+                R_j_new += tmp * tmp
+            R_j_new = sqrt(R_j_new)
+            # R_new = R - R_j + R_j_new
+
+            if n == 0:
+                delta += R_j_new - R_j
+                delta *= sigma
+
+            # Check decrease condition
+            if L_new - L + R_j_new - R_j <= delta:
+                break
+            else:
+                delta *= beta
+                for k in xrange(n_vectors):
+                    d_old[k] = d[k]
+                    d[k] *= beta
 
         # Update solution
         for k in xrange(n_vectors):
@@ -182,26 +205,19 @@ cdef class LossFunction:
                                   double* Lpp_max):
         raise NotImplementedError()
 
-    cdef void line_search_l1l2_mc(self,
-                                  int j,
-                                  double C,
-                                  np.ndarray[double, ndim=2, mode='c'] w,
-                                  int n_vectors,
-                                  int* indices,
-                                  double *data,
-                                  int n_nz,
-                                  np.ndarray[int, ndim=1] y,
-                                  np.ndarray[double, ndim=2, mode='c'] b,
-                                  np.ndarray[double, ndim=1, mode='c'] g,
-                                  np.ndarray[double, ndim=1, mode='c'] d,
-                                  np.ndarray[double, ndim=1, mode='c'] d_old,
-                                  np.ndarray[double, ndim=1, mode='c'] Z,
-                                  double L,
-                                  double R_j,
-                                  double* delta,
-                                  int max_num_linesearch,
-                                  double sigma,
-                                  double beta):
+    cdef void update_l1l2_mc(self,
+                             double C,
+                             np.ndarray[double, ndim=2, mode='c'] w,
+                             int n_vectors,
+                             int* indices,
+                             double *data,
+                             int n_nz,
+                             np.ndarray[int, ndim=1] y,
+                             np.ndarray[double, ndim=2, mode='c'] b,
+                             np.ndarray[double, ndim=1, mode='c'] d,
+                             np.ndarray[double, ndim=1, mode='c'] d_old,
+                             np.ndarray[double, ndim=1, mode='c'] Z,
+                             double* L_new):
         raise NotImplementedError()
 
 
@@ -406,70 +422,39 @@ cdef class SquaredHinge(LossFunction):
         Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
         R_j[0] = sqrt(R_j[0])
 
-    cdef void line_search_l1l2_mc(self,
-                                  int j,
-                                  double C,
-                                  np.ndarray[double, ndim=2, mode='c'] w,
-                                  int n_vectors,
-                                  int* indices,
-                                  double *data,
-                                  int n_nz,
-                                  np.ndarray[int, ndim=1] y,
-                                  np.ndarray[double, ndim=2, mode='c'] b,
-                                  np.ndarray[double, ndim=1, mode='c'] g,
-                                  np.ndarray[double, ndim=1, mode='c'] d,
-                                  np.ndarray[double, ndim=1, mode='c'] d_old,
-                                  np.ndarray[double, ndim=1, mode='c'] Z,
-                                  double L,
-                                  double R_j,
-                                  double* delta,
-                                  int max_num_linesearch,
-                                  double sigma,
-                                  double beta):
+    cdef void update_l1l2_mc(self,
+                             double C,
+                             np.ndarray[double, ndim=2, mode='c'] w,
+                             int n_vectors,
+                             int* indices,
+                             double *data,
+                             int n_nz,
+                             np.ndarray[int, ndim=1] y,
+                             np.ndarray[double, ndim=2, mode='c'] b,
+                             np.ndarray[double, ndim=1, mode='c'] d,
+                             np.ndarray[double, ndim=1, mode='c'] d_old,
+                             np.ndarray[double, ndim=1, mode='c'] Z,
+                             double* L_new):
 
-        cdef int ii, i, k, n
-        cdef double tmp, L_new, R_j_new, b_new
+        cdef int ii, i, k
+        cdef double tmp, b_new
 
-        for n in xrange(max_num_linesearch):
+        L_new[0] = 0
+        for ii in xrange(n_nz):
+            i = indices[ii]
 
-            # Update predictions, normalizations and objective value.
-            L_new = 0
-            for ii in xrange(n_nz):
-                i = indices[ii]
+            tmp = d_old[y[i]] - d[y[i]]
 
-                tmp = d_old[y[i]] - d[y[i]]
-
-                for k in xrange(n_vectors):
-                    if k == y[i]:
-                        continue
-
-                    b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * data[ii]
-                    b[k, i] = b_new
-                    if b_new > 0:
-                        L_new += b_new * b_new
-
-            L_new *= C
-
-            # Compute regularization term.
-            R_j_new = 0
             for k in xrange(n_vectors):
-                tmp = w[k, j] + d[k]
-                R_j_new += tmp * tmp
-            R_j_new = sqrt(R_j_new)
-            # R_new = R - R_j + R_j_new
+                if k == y[i]:
+                    continue
 
-            if n == 0:
-                delta[0] += R_j_new - R_j
-                delta[0] *= sigma
+                b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * data[ii]
+                b[k, i] = b_new
+                if b_new > 0:
+                    L_new[0] += b_new * b_new
 
-            # Check decrease condition
-            if L_new - L + R_j_new - R_j <= delta[0]:
-                break
-            else:
-                delta[0] *= beta
-                for k in xrange(n_vectors):
-                    d_old[k] = d[k]
-                    d[k] *= beta
+        L_new[0] *= C
 
 
 cdef class ModifiedHuber(LossFunction):
@@ -735,68 +720,36 @@ cdef class Log(LossFunction):
         Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
         R_j[0] = sqrt(R_j[0])
 
-    cdef void line_search_l1l2_mc(self,
-                                  int j,
-                                  double C,
-                                  np.ndarray[double, ndim=2, mode='c'] w,
-                                  int n_vectors,
-                                  int* indices,
-                                  double *data,
-                                  int n_nz,
-                                  np.ndarray[int, ndim=1] y,
-                                  np.ndarray[double, ndim=2, mode='c'] b,
-                                  np.ndarray[double, ndim=1, mode='c'] g,
-                                  np.ndarray[double, ndim=1, mode='c'] d,
-                                  np.ndarray[double, ndim=1, mode='c'] d_old,
-                                  np.ndarray[double, ndim=1, mode='c'] Z,
-                                  double L,
-                                  double R_j,
-                                  double* delta,
-                                  int max_num_linesearch,
-                                  double sigma,
-                                  double beta):
+    cdef void update_l1l2_mc(self,
+                             double C,
+                             np.ndarray[double, ndim=2, mode='c'] w,
+                             int n_vectors,
+                             int* indices,
+                             double *data,
+                             int n_nz,
+                             np.ndarray[int, ndim=1] y,
+                             np.ndarray[double, ndim=2, mode='c'] b,
+                             np.ndarray[double, ndim=1, mode='c'] d,
+                             np.ndarray[double, ndim=1, mode='c'] d_old,
+                             np.ndarray[double, ndim=1, mode='c'] Z,
+                             double* L_new):
+        cdef int i, ii, k
+        cdef double tmp
 
-        cdef int ii, i, k, n
-        cdef double tmp, L_new, R_j_new
+        L_new[0] = 0
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            tmp = d_old[y[i]] - d[y[i]]
+            Z[i] = 0
 
-        for n in xrange(max_num_linesearch):
-
-            # Update predictions, normalizations and objective value.
-            L_new = 0
-            for ii in xrange(n_nz):
-                i = indices[ii]
-                tmp = d_old[y[i]] - d[y[i]]
-                Z[i] = 0
-
-                for k in xrange(n_vectors):
-                    if y[i] != k:
-                        b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
-                    Z[i] += b[k, i]
-
-                L_new += log(Z[i])
-
-            L_new *= C
-
-            # Compute regularization term.
-            R_j_new = 0
             for k in xrange(n_vectors):
-                tmp = w[k, j] + d[k]
-                R_j_new += tmp * tmp
-            R_j_new = sqrt(R_j_new)
-            # R_new = R - R_j + R_j_new
+                if y[i] != k:
+                    b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
+                Z[i] += b[k, i]
 
-            if n == 0:
-                delta[0] += R_j_new - R_j
-                delta[0] *= sigma
+            L_new[0] += log(Z[i])
 
-            # Check decrease condition
-            if L_new - L + R_j_new - R_j <= delta[0]:
-                break
-            else:
-                delta[0] *= beta
-                for k in xrange(n_vectors):
-                    d_old[k] = d[k]
-                    d[k] *= beta
+        L_new[0] *= C
 
 
 def _primal_cd_l2svm_l1r(self,
