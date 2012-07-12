@@ -57,9 +57,15 @@ cdef class LossFunction:
         cdef double z_diff, z_old, Dj_z, cond
 
         # Compute derivatives
-        self.derivatives_l2(j, C, sigma, w,
+        self.derivatives_l2(j, C, w,
                             indices, data, n_nz, col, y, b,
                             Dp, &Dpp, &Dj_zero, &bound)
+
+        Dp[0] = w[j] + Dp[0]
+        Dpp = 1 + Dpp
+
+        if bound != 0:
+            bound = (2 * C * bound + 1) / 2.0 + sigma
 
         if fabs(Dp[0]/Dpp) <= 1e-12:
             return
@@ -102,7 +108,6 @@ cdef class LossFunction:
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double sigma,
                              double *w,
                              int *indices,
                              double *data,
@@ -128,6 +133,119 @@ cdef class LossFunction:
                         double *b,
                         double *Dj_z):
         raise NotImplementedError()
+
+    # L1 regularization
+
+    cdef int solve_l1(self,
+                      int j,
+                      double C,
+                      double *w,
+                      int n_samples,
+                      int *indices,
+                      double *data,
+                      int n_nz,
+                      double *col,
+                      double *y,
+                      double *b,
+                      double Lpmax_old,
+                      double *violation,
+                      int *n_sv):
+        cdef double Lj_zero = 0
+        cdef double Lp = 0
+        cdef double Lpp = 0
+        cdef double xj_sq = 0
+        cdef double Lpp_wj, d, wj_abs
+        cdef double cond
+        cdef double appxcond = 0
+        cdef double Lj_z
+
+        cdef int max_num_linesearch = 20
+        cdef double sigma = 0.01
+        cdef double beta = 0.5
+
+        # Compute derivatives
+        self.derivatives_l2(j, C, w,
+                            indices, data, n_nz, col, y, b,
+                            &Lp, &Lpp, &Lj_zero, &xj_sq)
+
+        xj_sq *= C
+        Lpp = max(Lpp, 1e-12)
+
+        Lp_p = Lp + 1
+        Lp_n = Lp - 1
+        violation[0] = 0
+
+        # Shrinking.
+        if w[j] == 0:
+            if Lp_p < 0:
+                violation[0] = -Lp_p
+            elif Lp_n > 0:
+                violation[0] = Lp_n
+            elif Lp_p > Lpmax_old / n_samples and Lp_n < -Lpmax_old / n_samples:
+                # Shrink!
+                return 1
+        elif w[j] > 0:
+            violation[0] = fabs(Lp_p)
+        else:
+            violation[0] = fabs(Lp_n)
+
+        # Obtain Newton direction d.
+        Lpp_wj = Lpp * w[j]
+        if Lp_p <= Lpp_wj:
+            d = -Lp_p / Lpp
+        elif Lp_n >= Lpp_wj:
+            d = -Lp_n / Lpp
+        else:
+            d = -w[j]
+
+        if fabs(d) < 1.0e-12:
+            return 0
+
+        wj_abs = fabs(w[j])
+        delta = fabs(w[j] + d) - wj_abs + Lp * d
+        z_old = 0
+        z = d
+
+        # Check z = lambda*d for lambda = 1, beta, beta^2 such that
+        # sufficient decrease condition is met.
+        for num_linesearch in xrange(max_num_linesearch):
+            # Reversed because of the minus in b[i] = 1 - y_i w^T x_i.
+            z_diff = z_old - z
+            cond = fabs(w[j] + z) - wj_abs - sigma * delta
+
+            appxcond = xj_sq * z * z + Lp * z + cond
+
+            # Avoid line search if possible.
+            if xj_sq > 0 and appxcond <= 0:
+                for ii in xrange(n_nz):
+                    i = indices[ii]
+                    # Need to remove the old z and had the new one.
+                    b[i] += z_diff * col[i]
+                break
+
+            # Compute objective function value.
+            self.update_l2(j, z_diff, C,
+                           indices, data, n_nz, col, y, b, &Lj_z)
+
+            # Check stopping condition.
+            cond = cond + Lj_z - Lj_zero
+            if cond <= 0:
+                break
+            else:
+                z_old = z
+                z *= beta
+                delta *= beta
+
+        # end for num_linesearch
+
+        if w[j] == 0 and z != 0:
+            n_sv[0] += 1
+        elif z != 0 and w[j] == -z:
+            n_sv[0] -= 1
+
+        w[j] += z
+
+        return 0
 
     # L1/L2 regularization (multiclass)
 
@@ -299,7 +417,6 @@ cdef class SquaredHinge(LossFunction):
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double sigma,
                              double *w,
                              int *indices,
                              double *data,
@@ -330,10 +447,9 @@ cdef class SquaredHinge(LossFunction):
                 Dpp[0] += val * val
                 Dj_zero[0] += b[i] * b[i]
 
-        Dp[0] = w[j] + 2 * C * Dp[0]
-        Dpp[0] = 1 + 2 * C * Dpp[0]
-        bound[0] = (2 * C * xj_sq + 1) / 2.0 + sigma
-
+        Dp[0] = 2 * C * Dp[0]
+        Dpp[0] = 2 * C * Dpp[0]
+        bound[0] = xj_sq
         Dj_zero[0] *= C
 
     cdef void update_l2(self,
@@ -360,7 +476,6 @@ cdef class SquaredHinge(LossFunction):
                 Dj_z[0] += b_new * b_new
 
         Dj_z[0] *= C
-
 
     # L1/L2 regularization (multi-class)
 
@@ -453,7 +568,6 @@ cdef class ModifiedHuber(LossFunction):
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double sigma,
                              double *w,
                              int *indices,
                              double *data,
@@ -488,10 +602,9 @@ cdef class ModifiedHuber(LossFunction):
                 Dpp[0] += val * val
                 Dj_zero[0] += b[i] * b[i]
 
-        Dp[0] = w[j] + 2 * C * Dp[0]
-        Dpp[0] = 1 + 2 * C * Dpp[0]
-        bound[0] = (2 * C * xj_sq + 1) / 2.0 + sigma
-
+        Dp[0] = 2 * C * Dp[0]
+        Dpp[0] = 2 * C * Dpp[0]
+        bound[0] = 0
         Dj_zero[0] *= C
 
     cdef void update_l2(self,
@@ -530,7 +643,6 @@ cdef class Log(LossFunction):
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double sigma,
                              double *w,
                              int *indices,
                              double *data,
@@ -561,8 +673,8 @@ cdef class Log(LossFunction):
             Dpp[0] += val * val * tau * (1 - tau)
             Dj_zero[0] += log(exppred)
 
-        Dp[0] = w[j] + C * Dp[0]
-        Dpp[0] = 1 + C * Dpp[0]
+        Dp[0] = C * Dp[0]
+        Dpp[0] = C * Dpp[0]
         Dj_zero[0] *= C
         bound[0] = 0
 
@@ -683,44 +795,34 @@ cdef class Log(LossFunction):
         L_new[0] *= C
 
 
-def _primal_cd_l2svm_l1r(self,
-                         np.ndarray[double, ndim=1, mode='c'] w,
-                         np.ndarray[double, ndim=1, mode='c'] b,
-                         Dataset X,
-                         np.ndarray[double, ndim=1] y,
-                         np.ndarray[int, ndim=1, mode='c'] index,
-                         selection,
-                         int search_size,
-                         termination,
-                         int n_components,
-                         double C,
-                         int max_iter,
-                         RandomState rs,
-                         double tol,
-                         callback,
-                         int verbose):
+def _primal_cd_l1r(self,
+                   np.ndarray[double, ndim=1, mode='c'] w,
+                   np.ndarray[double, ndim=1, mode='c'] b,
+                   Dataset X,
+                   np.ndarray[double, ndim=1] y,
+                   np.ndarray[int, ndim=1, mode='c'] index,
+                   LossFunction loss,
+                   selection,
+                   int search_size,
+                   termination,
+                   int n_components,
+                   double C,
+                   int max_iter,
+                   RandomState rs,
+                   double tol,
+                   callback,
+                   int verbose):
 
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = index.shape[0]
 
-    cdef int j, s, t, i, ii = 0
+    cdef int j, s, t
     cdef int active_size = n_features
-    cdef int max_num_linesearch = 20
 
-    cdef double sigma = 0.01
-    cdef double beta = 0.5
-    cdef double d, Lp, Lpp, Lpp_wj
     cdef double Lpmax_old = DBL_MAX
     cdef double Lpmax_new
     cdef double Lpmax_init
-    cdef double z, z_old, z_diff
-    cdef double Lj_zero, Lj_z
-    cdef double appxcond, cond
-    cdef double val, val_sq
-    cdef double Lp_p, Lp_n, violation
-    cdef double delta, b_new, b_add
-    cdef double xj_sq
-    cdef double wj_abs
+    cdef double violation
 
     cdef np.ndarray[double, ndim=1, mode='c'] col
     col = np.zeros(n_samples, dtype=np.float64)
@@ -737,6 +839,7 @@ def _primal_cd_l2svm_l1r(self,
     cdef int n_nz
 
     cdef int n_sv = 0
+    cdef int shrink = 0
 
     # FIXME: would be better to store the support indices in the class.
     for j in xrange(n_features):
@@ -761,118 +864,19 @@ def _primal_cd_l2svm_l1r(self,
                 j = select_sv_precomputed(index, search_size,
                                           active_size, select_method, b, rs)
 
-            Lj_zero = 0
-            Lp = 0
-            Lpp = 0
-            xj_sq = 0
-
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
-            for ii in xrange(n_nz):
-                i = indices[ii]
-                val = data[ii] * y[i]
-                col[i] = val
-                val_sq = val * val
-                if b[i] > 0:
-                    Lp -= val * b[i]
-                    Lpp += val_sq
-                    Lj_zero += b[i] * b[i]
-                xj_sq += val_sq
-            # end for
-
-            xj_sq *= C
-            Lj_zero *= C
-            Lp *= 2 * C
-
-            Lpp *= 2 * C
-            Lpp = max(Lpp, 1e-12)
-
-            Lp_p = Lp + 1
-            Lp_n = Lp - 1
-            violation = 0
-
-            # Shrinking.
-            if w[j] == 0:
-                if Lp_p < 0:
-                    violation = -Lp_p
-                elif Lp_n > 0:
-                    violation = Lp_n
-                elif Lp_p > Lpmax_old / n_samples and Lp_n < -Lpmax_old / n_samples:
-                    active_size -= 1
-                    index[s], index[active_size] = index[active_size], index[s]
-                    # Jump w/o incrementing s so as to use the swapped sample.
-                    continue
-            elif w[j] > 0:
-                violation = fabs(Lp_p)
-            else:
-                violation = fabs(Lp_n)
+            loss.solve_l1(j, C, <double*>w.data, n_samples,
+                          indices, data, n_nz, <double*>col.data,
+                          <double*>y.data, <double*>b.data,
+                          Lpmax_old, &violation, &n_sv)
 
             Lpmax_new = max(Lpmax_new, violation)
 
-            # Obtain Newton direction d.
-            Lpp_wj = Lpp * w[j]
-            if Lp_p <= Lpp_wj:
-                d = -Lp_p / Lpp
-            elif Lp_n >= Lpp_wj:
-                d = -Lp_n / Lpp
-            else:
-                d = -w[j]
-
-            if fabs(d) < 1.0e-12:
-                s += 1
+            if shrink:
+                active_size -= 1
+                index[s], index[active_size] = index[active_size], index[s]
                 continue
-
-            wj_abs = fabs(w[j])
-            delta = fabs(w[j] + d) - wj_abs + Lp * d
-            z_old = 0
-            z = d
-
-            # Check z = lambda*d for lambda = 1, beta, beta^2 such that
-            # sufficient decrease condition is met.
-            for num_linesearch in xrange(max_num_linesearch):
-                # Reversed because of the minus in b[i] = 1 - y_i w^T x_i.
-                z_diff = z_old - z
-                cond = fabs(w[j] + z) - wj_abs - sigma * delta
-
-                appxcond = xj_sq * z * z + Lp * z + cond
-
-                # Avoid line search if possible.
-                if appxcond <= 0:
-                    for ii in xrange(n_nz):
-                        i = indices[ii]
-                        # Need to remove the old z and had the new one.
-                        b[i] += z_diff * col[i]
-                    break
-
-                # Compute objective function value.
-                Lj_z = 0
-
-                for ii in xrange(n_nz):
-                    i = indices[ii]
-                    b_new = b[i] + z_diff * col[i]
-                    b[i] = b_new
-                    if b_new > 0:
-                        Lj_z += b_new * b_new
-
-                Lj_z *= C
-
-                # Check stopping condition.
-                cond = cond + Lj_z - Lj_zero
-                if cond <= 0:
-                    break
-                else:
-                    z_old = z
-                    z *= beta
-                    delta *= beta
-
-            # end for num_linesearch
-
-            if w[j] == 0 and z != 0:
-                n_sv += 1
-            elif z != 0 and w[j] == -z:
-                n_sv -= 1
-
-            w[j] += z
 
             # Exit if necessary.
             if check_n_sv and n_sv >= n_components:

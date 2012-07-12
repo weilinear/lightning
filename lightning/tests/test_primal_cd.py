@@ -116,6 +116,13 @@ def test_early_stopping_l1r_rbf():
     assert_equal(n_nz, 30)
 
 
+def test_fit_linear_binary_l1r_log_loss():
+    clf = PrimalLinearSVC(C=1.0, random_state=0, penalty="l1", loss="log")
+    clf.fit(bin_dense, bin_target)
+    acc = clf.score(bin_dense, bin_target)
+    assert_almost_equal(acc, 0.995)
+
+
 def test_fit_linear_binary_l2r():
     clf = PrimalLinearSVC(C=1.0, random_state=0, penalty="l2")
     clf.fit(bin_dense, bin_target)
