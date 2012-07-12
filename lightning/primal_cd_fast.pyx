@@ -724,9 +724,9 @@ cdef class Log(LossFunction):
                     continue
 
                 if Z[i] > 0:
-                    tmp = b[k, i]
-                    g[k] += tmp * data[ii] / Z[i]
-                    Lpp += data[ii] * data[ii] * tmp * (1 - tmp/Z[i]) / Z[i]
+                    tmp = b[k, i] / Z[i]
+                    g[k] += tmp * data[ii]
+                    Lpp += data[ii] * data[ii] * tmp * (1 - tmp)
 
             g[k] *= C
             Lpp *= C
