@@ -365,6 +365,7 @@ cdef class LossFunction:
 
 cdef class Squared(LossFunction):
 
+    # L2 regularization
 
     cdef void solve_l2(self,
                        int j,
@@ -398,6 +399,78 @@ cdef class Squared(LossFunction):
         for ii in xrange(n_nz):
             i = indices[ii]
             b[i] += z * data[ii]
+
+
+    # L1 regularization
+
+    cdef int solve_l1(self,
+                      int j,
+                      double C,
+                      double *w,
+                      int n_samples,
+                      int *indices,
+                      double *data,
+                      int n_nz,
+                      double *col,
+                      double *y,
+                      double *b,
+                      double Lpmax_old,
+                      double *violation,
+                      int *n_sv):
+        cdef int i, ii
+        cdef double Lp, Lpp, old_w, z, v
+        cdef double Lp_p, Lp_n
+
+        Lpp = 0
+        Lp = 0
+
+        # Compute derivative and second derivative.
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            Lpp += data[ii] * data[ii]
+            Lp += b[i] * data[ii]
+
+        Lpp = C * Lpp
+        Lpp = min(1e9, max(1e-9, Lpp))
+        Lp = C * Lp
+        Lp_p = Lp + 1
+        Lp_n = Lp - 1
+
+        # Shrinking.
+        if w[j] == 0:
+            if Lp_p < 0:
+                violation[0] = -Lp_p
+            elif Lp_n > 0:
+                violation[0] = Lp_n
+            elif Lp_p > Lpmax_old / n_samples and Lp_n < -Lpmax_old / n_samples:
+                # Shrink!
+                return 1
+        elif w[j] > 0:
+            violation[0] = fabs(Lp_p)
+        else:
+            violation[0] = fabs(Lp_n)
+
+        # Compute solutions.
+        old_w = w[j]
+        v = w[j] - Lp / Lpp
+        w[j] = max(fabs(v) - 1 / Lpp, 0)
+
+        if v < 0:
+            w[j] *= -1
+
+        z = w[j] - old_w
+
+        # Update predictions
+        for ii in xrange(n_nz):
+            i = indices[ii]
+            b[i] += z * data[ii]
+
+        if old_w == 0 and z != 0:
+            n_sv[0] += 1
+        elif z != 0 and old_w == -z:
+            n_sv[0] -= 1
+
+        return 0
 
 
 cdef class SquaredHinge(LossFunction):

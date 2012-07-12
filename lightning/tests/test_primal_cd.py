@@ -399,6 +399,29 @@ def test_fit_squared_loss():
                               clf.errors_.ravel())
 
 
+def test_fit_squared_loss_l1():
+    clf = PrimalLinearSVC(C=1.0, random_state=0, penalty="l1",
+                          loss="squared", max_iter=100)
+    clf.fit(bin_dense, bin_target)
+    assert_almost_equal(clf.score(bin_dense, bin_target), 0.985, 3)
+    y = bin_target.copy()
+    y[y == 0] = -1
+    assert_array_almost_equal(np.dot(bin_dense, clf.coef_.ravel()) - y,
+                              clf.errors_.ravel())
+    n_nz = np.sum(clf.coef_ != 0)
+    assert_equal(n_nz, 89)
+
+    K = pairwise_kernels(bin_dense, metric="rbf", gamma=0.1)
+
+    clf = PrimalSVC(C=1.0, random_state=0, penalty="l1",
+                    kernel="rbf", gamma=0.1,
+                    loss="squared", max_iter=100)
+    clf.fit(bin_dense, bin_target)
+    assert_almost_equal(clf.score(bin_dense, bin_target), 0.845, 3)
+    n_nz = np.sum(clf.coef_ != 0)
+    assert_equal(n_nz, 160)
+
+
 def test_l1l2_multiclass_log_loss():
     for data in (mult_dense, mult_csc):
         clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
