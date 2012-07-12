@@ -769,7 +769,8 @@ cdef class Log(LossFunction):
                 Z[i] = 0
 
                 for k in xrange(n_vectors):
-                    b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
+                    if y[i] != k:
+                        b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
                     Z[i] += b[k, i]
 
                 L_new += log(Z[i])
