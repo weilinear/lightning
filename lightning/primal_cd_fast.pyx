@@ -274,7 +274,7 @@ cdef class LossFunction:
 
         self.derivatives_l1l2_mc(j, C, w, n_vectors,
                                  indices, data, n_nz, y, b, g, Z,
-                                 &L, &R_j, &Lpp_max)
+                                 &L, &Lpp_max)
 
 
         # Compute vector to be projected.
@@ -283,13 +283,17 @@ cdef class LossFunction:
 
         # Project.
         scaling = 0
+        R_j = 0
         for k in xrange(n_vectors):
+            R_j += w[k, j] * w[k, j]
             scaling += d[k] * d[k]
 
         scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
 
         if scaling < 0:
             scaling = 0
+
+        R_j = sqrt(R_j)
 
         delta = 0
         for k in xrange(n_vectors):
@@ -343,7 +347,6 @@ cdef class LossFunction:
                                   np.ndarray[double, ndim=1, mode='c'] g,
                                   np.ndarray[double, ndim=1, mode='c'] Z,
                                   double* L,
-                                  double* R_j,
                                   double* Lpp_max):
         raise NotImplementedError()
 
@@ -555,7 +558,6 @@ cdef class SquaredHinge(LossFunction):
                                   np.ndarray[double, ndim=1, mode='c'] g,
                                   np.ndarray[double, ndim=1, mode='c'] Z,
                                   double* L,
-                                  double* R_j,
                                   double* Lpp_max):
 
         cdef int ii, i, k
@@ -563,12 +565,10 @@ cdef class SquaredHinge(LossFunction):
 
         # Compute objective value, gradient and largest second derivative.
         Lpp_max[0] = 0
-        R_j[0] = 0
         L[0] = 0
 
         for k in xrange(n_vectors):
             g[k] = 0
-            R_j[0] += w[k, j] * w[k, j]
 
             for ii in xrange(n_nz):
                 i = indices[ii]
@@ -589,7 +589,6 @@ cdef class SquaredHinge(LossFunction):
         L[0] *= C
         Lpp_max[0] *= 2 * C
         Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
-        R_j[0] = sqrt(R_j[0])
 
     cdef void update_l1l2_mc(self,
                              double C,
@@ -782,7 +781,6 @@ cdef class Log(LossFunction):
                                   np.ndarray[double, ndim=1, mode='c'] g,
                                   np.ndarray[double, ndim=1, mode='c'] Z,
                                   double* L,
-                                  double* R_j,
                                   double* Lpp_max):
 
         cdef int ii, i, k
@@ -800,12 +798,9 @@ cdef class Log(LossFunction):
 
         # Compute gradient and largest second derivative.
         Lpp_max[0] = -DBL_MAX
-        R_j[0] = 0
 
         for k in xrange(n_vectors):
             g[k] = 0
-            R_j[0] += w[k, j] * w[k, j]
-
             Lpp = 0
 
             for ii in xrange(n_nz):
@@ -824,7 +819,6 @@ cdef class Log(LossFunction):
             Lpp_max[0] = max(Lpp, Lpp_max[0])
 
         Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
-        R_j[0] = sqrt(R_j[0])
 
     cdef void update_l1l2_mc(self,
                              double C,
