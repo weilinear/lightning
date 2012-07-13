@@ -57,7 +57,7 @@ cdef class LossFunction:
         cdef double z_diff, z_old, Dj_z, cond
 
         # Compute derivatives
-        self.derivatives_l2(j, C, w,
+        self.derivatives_l2(j, C,
                             indices, data, n_nz, col, y, b,
                             Dp, &Dpp, &Dj_zero, &bound)
 
@@ -108,7 +108,6 @@ cdef class LossFunction:
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double *w,
                              int *indices,
                              double *data,
                              int n_nz,
@@ -164,7 +163,7 @@ cdef class LossFunction:
         cdef double beta = 0.5
 
         # Compute derivatives
-        self.derivatives_l2(j, C, w,
+        self.derivatives_l2(j, C,
                             indices, data, n_nz, col, y, b,
                             &Lp, &Lpp, &Lj_zero, &xj_sq)
 
@@ -272,7 +271,7 @@ cdef class LossFunction:
         cdef double beta = 0.5
         cdef double sigma = 0.01
 
-        self.derivatives_l1l2_mc(j, C, w, n_vectors,
+        self.derivatives_l1l2_mc(j, C, n_vectors,
                                  indices, data, n_nz, y, b, g, Z,
                                  &L, &Lpp_max)
 
@@ -306,7 +305,7 @@ cdef class LossFunction:
         for n in xrange(max_num_linesearch):
 
             # Update predictions, normalizations and objective value.
-            self.update_l1l2_mc(C, w, n_vectors,
+            self.update_l1l2_mc(C, n_vectors,
                                 indices, data, n_nz, y, b, d, d_old, Z, &L_new)
 
             # Compute regularization term.
@@ -337,7 +336,6 @@ cdef class LossFunction:
     cdef void derivatives_l1l2_mc(self,
                                   int j,
                                   double C,
-                                  np.ndarray[double, ndim=2, mode='c'] w,
                                   int n_vectors,
                                   int* indices,
                                   double *data,
@@ -352,7 +350,6 @@ cdef class LossFunction:
 
     cdef void update_l1l2_mc(self,
                              double C,
-                             np.ndarray[double, ndim=2, mode='c'] w,
                              int n_vectors,
                              int* indices,
                              double *data,
@@ -483,7 +480,6 @@ cdef class SquaredHinge(LossFunction):
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double *w,
                              int *indices,
                              double *data,
                              int n_nz,
@@ -548,7 +544,6 @@ cdef class SquaredHinge(LossFunction):
     cdef void derivatives_l1l2_mc(self,
                                   int j,
                                   double C,
-                                  np.ndarray[double, ndim=2, mode='c'] w,
                                   int n_vectors,
                                   int* indices,
                                   double *data,
@@ -592,7 +587,6 @@ cdef class SquaredHinge(LossFunction):
 
     cdef void update_l1l2_mc(self,
                              double C,
-                             np.ndarray[double, ndim=2, mode='c'] w,
                              int n_vectors,
                              int* indices,
                              double *data,
@@ -630,7 +624,6 @@ cdef class ModifiedHuber(LossFunction):
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double *w,
                              int *indices,
                              double *data,
                              int n_nz,
@@ -705,7 +698,6 @@ cdef class Log(LossFunction):
     cdef void derivatives_l2(self,
                              int j,
                              double C,
-                             double *w,
                              int *indices,
                              double *data,
                              int n_nz,
@@ -771,7 +763,6 @@ cdef class Log(LossFunction):
     cdef void derivatives_l1l2_mc(self,
                                   int j,
                                   double C,
-                                  np.ndarray[double, ndim=2, mode='c'] w,
                                   int n_vectors,
                                   int* indices,
                                   double *data,
@@ -822,7 +813,6 @@ cdef class Log(LossFunction):
 
     cdef void update_l1l2_mc(self,
                              double C,
-                             np.ndarray[double, ndim=2, mode='c'] w,
                              int n_vectors,
                              int* indices,
                              double *data,
