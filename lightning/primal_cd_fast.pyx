@@ -257,24 +257,50 @@ cdef class LossFunction:
                             double *data,
                             int n_nz,
                             np.ndarray[int, ndim=1] y,
+                            np.ndarray[double, ndim=2, mode='fortran'] Y,
+                            int multiclass,
                             np.ndarray[double, ndim=2, mode='c'] b,
                             np.ndarray[double, ndim=1, mode='c'] g,
                             np.ndarray[double, ndim=1, mode='c'] d,
                             np.ndarray[double, ndim=1, mode='c'] d_old,
-                            np.ndarray[double, ndim=1, mode='c'] Z):
+                            double* Z):
 
         cdef int i, k, ii, n
         cdef double scaling, delta, L, R_j, Lpp_max
         cdef double tmp, L_new, R_j_new
+        cdef double L_tmp, bound, Lpp_tmp
 
         cdef int max_num_linesearch = 20
         cdef double beta = 0.5
         cdef double sigma = 0.01
+        cdef int n_samples = Y.shape[0]
+        cdef double* y_ptr
+        cdef double* b_ptr
+        cdef double* Z_ptr
+        cdef double z_diff
 
-        self.derivatives_l1l2_mc(j, C, n_vectors,
-                                 indices, data, n_nz, y, b, g, Z,
-                                 &L, &Lpp_max)
+        if multiclass:
+            self.derivatives_l1l2_mc(j, C, n_vectors,
+                                     indices, data, n_nz, y, b, g, Z,
+                                     &L, &Lpp_max)
+        else:
+            L = 0
+            Lpp_max = -DBL_MAX
+            y_ptr = <double*>Y.data
+            b_ptr = <double*>b.data
+            Z_ptr = Z
 
+            for k in xrange(n_vectors):
+                self.derivatives_l2(j, C, indices, data, n_nz,
+                                    Z_ptr, y_ptr, b_ptr,
+                                    &g[k], &Lpp_tmp, &L_tmp, &bound)
+                L += L_tmp
+                Lpp_max = max(Lpp_max, Lpp_tmp)
+                y_ptr += n_samples
+                b_ptr += n_samples
+                Z_ptr += n_samples
+
+            Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
 
         # Compute vector to be projected.
         for k in xrange(n_vectors):
@@ -305,8 +331,23 @@ cdef class LossFunction:
         for n in xrange(max_num_linesearch):
 
             # Update predictions, normalizations and objective value.
-            self.update_l1l2_mc(C, n_vectors,
-                                indices, data, n_nz, y, b, d, d_old, Z, &L_new)
+            if multiclass:
+                self.update_l1l2_mc(C, n_vectors, indices, data, n_nz,
+                                    y, b, d, d_old, Z, &L_new)
+            else:
+                L_new = 0
+                y_ptr = <double*>Y.data
+                b_ptr = <double*>b.data
+                Z_ptr = Z
+
+                for k in xrange(n_vectors):
+                    z_diff = d_old[k] - d[k]
+                    self.update_l2(j, z_diff, C, indices, data, n_nz,
+                                   Z_ptr, y_ptr, b_ptr, &L_tmp)
+                    L_new += L_tmp
+                    y_ptr += n_samples
+                    b_ptr += n_samples
+                    Z_ptr += n_samples
 
             # Compute regularization term.
             R_j_new = 0
@@ -343,7 +384,7 @@ cdef class LossFunction:
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
-                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double* Z,
                                   double* L,
                                   double* Lpp_max):
         raise NotImplementedError()
@@ -358,7 +399,7 @@ cdef class LossFunction:
                              np.ndarray[double, ndim=2, mode='c'] b,
                              np.ndarray[double, ndim=1, mode='c'] d,
                              np.ndarray[double, ndim=1, mode='c'] d_old,
-                             np.ndarray[double, ndim=1, mode='c'] Z,
+                             double* Z,
                              double* L_new):
         raise NotImplementedError()
 
@@ -551,7 +592,7 @@ cdef class SquaredHinge(LossFunction):
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
-                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double* Z,
                                   double* L,
                                   double* Lpp_max):
 
@@ -595,7 +636,7 @@ cdef class SquaredHinge(LossFunction):
                              np.ndarray[double, ndim=2, mode='c'] b,
                              np.ndarray[double, ndim=1, mode='c'] d,
                              np.ndarray[double, ndim=1, mode='c'] d_old,
-                             np.ndarray[double, ndim=1, mode='c'] Z,
+                             double* Z,
                              double* L_new):
 
         cdef int ii, i, k
@@ -770,7 +811,7 @@ cdef class Log(LossFunction):
                                   np.ndarray[int, ndim=1] y,
                                   np.ndarray[double, ndim=2, mode='c'] b,
                                   np.ndarray[double, ndim=1, mode='c'] g,
-                                  np.ndarray[double, ndim=1, mode='c'] Z,
+                                  double* Z,
                                   double* L,
                                   double* Lpp_max):
 
@@ -821,7 +862,7 @@ cdef class Log(LossFunction):
                              np.ndarray[double, ndim=2, mode='c'] b,
                              np.ndarray[double, ndim=1, mode='c'] d,
                              np.ndarray[double, ndim=1, mode='c'] d_old,
-                             np.ndarray[double, ndim=1, mode='c'] Z,
+                             double* Z,
                              double* L_new):
         cdef int i, ii, k
         cdef double tmp
@@ -975,6 +1016,8 @@ def _primal_cd_l1l2r(self,
                      np.ndarray[double, ndim=2, mode='c'] b,
                      Dataset X,
                      np.ndarray[int, ndim=1] y,
+                     np.ndarray[double, ndim=2, mode='fortran'] Y,
+                     int multiclass,
                      np.ndarray[int, ndim=1, mode='c'] index,
                      LossFunction loss,
                      double C,
@@ -1004,8 +1047,11 @@ def _primal_cd_l1l2r(self,
     cdef np.ndarray[double, ndim=1, mode='c'] d_old
     d_old = np.zeros(n_vectors, dtype=np.float64)
 
-    cdef np.ndarray[double, ndim=1, mode='c'] Z
-    Z = np.zeros(n_samples, dtype=np.float64)
+    cdef np.ndarray[double, ndim=2, mode='c'] Z
+    if multiclass:
+        Z = np.zeros((n_samples, 1), dtype=np.float64)
+    else:
+        Z = np.zeros((n_vectors, n_samples), dtype=np.float64)
 
     for t in xrange(max_iter):
         if verbose >= 1:
@@ -1019,7 +1065,8 @@ def _primal_cd_l1l2r(self,
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
             loss.solve_l1l2_mc(j, C, w, n_vectors,
-                               indices, data, n_nz, y, b, g, d, d_old, Z)
+                               indices, data, n_nz, y, Y, multiclass,
+                               b, g, d, d_old, <double*>Z.data)
 
 
 def _primal_cd_l2r(self,

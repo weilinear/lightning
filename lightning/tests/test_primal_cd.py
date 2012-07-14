@@ -8,6 +8,7 @@ from nose.tools import assert_raises, assert_true, assert_equal, \
 
 from sklearn.datasets.samples_generator import make_classification
 from sklearn.metrics.pairwise import pairwise_kernels
+from sklearn.preprocessing import LabelBinarizer
 
 from lightning.primal_cd import PrimalLinearSVC, PrimalSVC
 from lightning.primal_cd import C_lower_bound, C_upper_bound
@@ -424,7 +425,7 @@ def test_fit_squared_loss_l1():
 
 def test_l1l2_multiclass_log_loss():
     for data in (mult_dense, mult_csc):
-        clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+        clf = PrimalLinearSVC(penalty="l1/l2", loss="log", multiclass=True,
                               max_iter=5, C=1.0, random_state=0)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.82666, 3)
@@ -435,7 +436,7 @@ def test_l1l2_multiclass_log_loss():
         assert_array_almost_equal(clf.errors_, df.T, 4)
         assert_equal(np.sum(clf.coef_ != 0), 300)
 
-        clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+        clf = PrimalLinearSVC(penalty="l1/l2", loss="log", multiclass=True,
                               max_iter=5, C=0.3, random_state=0)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.8033, 3)
@@ -446,6 +447,7 @@ def test_l1l2_multiclass_log_loss():
 def test_l1l2_multiclass_squared_hinge_loss():
     for data in (mult_dense, mult_csc):
         clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                              multiclass=True,
                               max_iter=20, C=1.0, random_state=0)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.833, 3)
@@ -459,6 +461,7 @@ def test_l1l2_multiclass_squared_hinge_loss():
         assert_equal(np.sum(clf.coef_ != 0), 300)
 
         clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                              multiclass=True,
                               max_iter=20, C=0.05, random_state=0)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.81, 3)
@@ -469,17 +472,37 @@ def test_l1l2_multiclass_squared_hinge_loss():
 
 def test_l1l2_multiclass_squared_hinge_loss_kernel():
     for data in (mult_dense, ):
-        clf = PrimalSVC(penalty="l1/l2", loss="squared_hinge",
+        clf = PrimalSVC(penalty="l1/l2", loss="squared_hinge", multiclass=True,
                         kernel="rbf", gamma=0.1,
                         max_iter=20, C=1.0, random_state=0)
         clf.fit(data, mult_target)
         assert_equal(clf.score(data, mult_target), 1.0)
         assert_equal(clf.n_support_vectors(), 300)
 
-        clf = PrimalSVC(penalty="l1/l2", loss="squared_hinge",
+        clf = PrimalSVC(penalty="l1/l2", loss="squared_hinge", multiclass=True,
                         kernel="rbf", gamma=0.1,
                         max_iter=20, C=0.3, random_state=0)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.67)
         assert_equal(clf.n_support_vectors(), 201)
         assert_true(clf.n_support_vectors() % 3 == 0)
+
+
+def test_l1l2_multi_task_squared_hinge_loss():
+    Y = LabelBinarizer(neg_label=-1).fit_transform(mult_target)
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
+                          multiclass=False,
+                          max_iter=20, C=5.0, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    df = clf.decision_function(mult_dense)
+    assert_array_almost_equal(clf.errors_.T, 1 - Y * df)
+    assert_almost_equal(clf.score(mult_dense, mult_target), 0.8633, 3)
+
+
+def test_l1l2_multi_task_log_loss():
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="log",
+                          multiclass=False,
+                          max_iter=20, C=5.0, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    assert_almost_equal(clf.score(mult_dense, mult_target), 0.8633, 3)
+

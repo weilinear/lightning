@@ -39,6 +39,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
                  debiasing=False, max_iter=1000, tol=1e-3,
+                 multiclass=False,
                  termination="convergence", n_components=1000,
                  warm_start=False, random_state=None,
                  callback=None, verbose=0, n_jobs=1):
@@ -48,6 +49,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         self.debiasing = debiasing
         self.max_iter = max_iter
         self.tol = tol
+        self.multiclass = multiclass
         self.termination = termination
         self.n_components = n_components
         self.warm_start = warm_start
@@ -68,6 +70,7 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
 
         reencode = self.penalty == "l1/l2"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
+        Y = np.asfortranarray(self.label_binarizer_.transform(y))
 
         kernel = get_kernel("linear")
         kcache = KernelCache(kernel, n_samples, 0, 0, self.verbose)
@@ -76,6 +79,9 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
             self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
             self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
 
+            if self.loss == "squared":
+                self.errors_ -= 1 + Y.T
+
         self.intercept_ = 0
 
         indices = np.arange(n_features, dtype=np.int32)
@@ -83,16 +89,11 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
         if self.penalty == "l1/l2":
             _primal_cd_l1l2r(self,
                              self.coef_, self.errors_,
-                             self._get_dataset(X), y,
+                             self._get_dataset(X), y, Y, self.multiclass,
                              indices, self._get_loss(),
                              self.C, self.max_iter, rs, self.tol,
                              self.callback, self.verbose)
         else:
-            Y = np.asfortranarray(self.label_binarizer_.transform(y))
-
-            if self.loss == "squared":
-                self.errors_ -= 1 + Y.T
-
             for i in xrange(n_vectors):
                 if self.penalty == "l1":
                     _primal_cd_l1r(self, self.coef_[i], self.errors_[i],
@@ -118,6 +119,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l1",
                  debiasing=False, max_iter=10, tol=1e-3,
+                 multiclass=False,
                  kernel="linear", gamma=0.1, coef0=1, degree=4,
                  Cd=1.0, warm_debiasing=False,
                  selection="permute", search_size=60,
@@ -130,6 +132,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         self.debiasing = debiasing
         self.max_iter = max_iter
         self.tol = tol
+        self.multiclass = multiclass
         self.kernel = kernel
         self.gamma = gamma
         self.coef0 = coef0
@@ -191,7 +194,7 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         if self.penalty == "l1/l2":
             _primal_cd_l1l2r(self,
                              self.coef_, self.errors_,
-                             self._get_dataset(X), y,
+                             self._get_dataset(X), y, Y, self.multiclass,
                              indices, self._get_loss(),
                              self.C, self.max_iter, rs, self.tol,
                              self.callback, self.verbose)
