@@ -36,6 +36,8 @@ cdef extern from "float.h":
 
 cdef class LossFunction:
 
+    cdef int max_steps
+
     # L2 regularization
 
     cdef void solve_l2(self,
@@ -75,7 +77,8 @@ cdef class LossFunction:
         z_old = 0
         z = d
 
-        for step in xrange(100):
+        step = 1
+        while True:
             z_diff = z_old - z
 
             # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
@@ -89,18 +92,19 @@ cdef class LossFunction:
             self.update(j, z_diff, C, indices, data, n_nz,
                         col, y, b, &Dj_z)
 
-            z_old = z
+            if step == self.max_steps:
+                break
 
             #   0.5 * (w + z e_j)^T (w + z e_j)
             # = 0.5 * w^T w + w_j z + 0.5 z^2
             cond = w[j] * z + (0.5 + sigma) * z * z
-
             cond += Dj_z - Dj_zero
-
             if cond <= 0:
                 break
-            else:
-                z *= beta
+
+            z_old = z
+            z *= beta
+            step += 1
 
         w[j] += z
 
@@ -156,8 +160,8 @@ cdef class LossFunction:
         cdef double cond
         cdef double appxcond = 0
         cdef double Lj_z
+        cdef int step
 
-        cdef int max_num_linesearch = 20
         cdef double sigma = 0.01
         cdef double beta = 0.5
 
@@ -205,7 +209,8 @@ cdef class LossFunction:
 
         # Check z = lambda*d for lambda = 1, beta, beta^2 such that
         # sufficient decrease condition is met.
-        for num_linesearch in xrange(max_num_linesearch):
+        step = 1
+        while True:
             # Reversed because of the minus in b[i] = 1 - y_i w^T x_i.
             z_diff = z_old - z
             cond = fabs(w[j] + z) - wj_abs - sigma * delta
@@ -223,14 +228,18 @@ cdef class LossFunction:
             # Compute objective function value.
             self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
 
+            if step == self.max_steps:
+                break
+
             # Check stopping condition.
             cond = cond + Lj_z - Lj_zero
             if cond <= 0:
                 break
-            else:
-                z_old = z
-                z *= beta
-                delta *= beta
+
+            z_old = z
+            z *= beta
+            delta *= beta
+            step += 1
 
         # end for num_linesearch
 
@@ -267,7 +276,6 @@ cdef class LossFunction:
         cdef double tmp, L_new, R_j_new
         cdef double L_tmp, bound, Lpp_tmp
 
-        cdef int max_num_linesearch = 20
         cdef double beta = 0.5
         cdef double sigma = 0.01
         cdef int n_samples = Y.shape[0]
@@ -323,7 +331,7 @@ cdef class LossFunction:
             delta += d[k] * g[k]
 
         # Perform line search.
-        for n in xrange(max_num_linesearch):
+        for n in xrange(self.max_steps):
 
             # Update predictions, normalizations and objective value.
             if multiclass:
@@ -401,117 +409,68 @@ cdef class LossFunction:
 
 cdef class Squared(LossFunction):
 
-    # L2 regularization
+    def __init__(self):
+        self.max_steps = 1
 
-    cdef void solve_l2(self,
-                       int j,
-                       double C,
-                       double *w,
-                       int *indices,
-                       double *data,
-                       int n_nz,
-                       double *col,
-                       double *y,
-                       double *b,
-                       double *Lp):
-        cdef int i, ii
-        cdef double Lpp, old_w, z
+    cdef void derivatives(self,
+                          int j,
+                          double C,
+                          int *indices,
+                          double *data,
+                          int n_nz,
+                          double *col,
+                          double *y,
+                          double *b,
+                          double *Lp,
+                          double *Lpp,
+                          double *L,
+                          double *bound):
+        cdef int ii, i
 
-        Lpp = 0
         Lp[0] = 0
+        Lpp[0] = 0
+        L[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            Lpp += data[ii] * data[ii]
+            Lpp[0] += data[ii] * data[ii]
             Lp[0] += b[i] * data[ii]
+            L[0] += b[i] * b[i]
 
-        Lpp = 2 * C * Lpp + 1
-        Lp[0] = 2 * C * Lp[0] + w[j]
+        Lpp[0] = 2 * C * Lpp[0]
+        Lp[0] = 2 * C * Lp[0]
+        L[0] *= C
+        bound[0] = 0
 
-        old_w = w[j]
-        z = -Lp[0] / Lpp
-        w[j] += z
+    cdef void update(self,
+                     int j,
+                     double z_diff,
+                     double C,
+                     int *indices,
+                     double *data,
+                     int n_nz,
+                     double *col,
+                     double *y,
+                     double *b,
+                     double *L_new):
+        cdef int ii, i
+
+        L_new[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            b[i] += z * data[ii]
+            b[i] -= z_diff * data[ii]
+            L_new[0] += b[i] * b[i]
 
-
-    # L1 regularization
-
-    cdef int solve_l1(self,
-                      int j,
-                      double C,
-                      double *w,
-                      int n_samples,
-                      int *indices,
-                      double *data,
-                      int n_nz,
-                      double *col,
-                      double *y,
-                      double *b,
-                      double Lpmax_old,
-                      double *violation,
-                      int *n_sv):
-        cdef int i, ii
-        cdef double Lp, Lpp, old_w, z, v
-        cdef double Lp_p, Lp_n
-
-        Lpp = 0
-        Lp = 0
-
-        # Compute derivative and second derivative.
-        for ii in xrange(n_nz):
-            i = indices[ii]
-            Lpp += data[ii] * data[ii]
-            Lp += b[i] * data[ii]
-
-        Lpp = C * Lpp
-        Lpp = min(1e9, max(1e-9, Lpp))
-        Lp = C * Lp
-        Lp_p = Lp + 1
-        Lp_n = Lp - 1
-
-        # Shrinking.
-        if w[j] == 0:
-            if Lp_p < 0:
-                violation[0] = -Lp_p
-            elif Lp_n > 0:
-                violation[0] = Lp_n
-            elif Lp_p > Lpmax_old / n_samples and Lp_n < -Lpmax_old / n_samples:
-                # Shrink!
-                return 1
-        elif w[j] > 0:
-            violation[0] = fabs(Lp_p)
-        else:
-            violation[0] = fabs(Lp_n)
-
-        # Compute solutions.
-        old_w = w[j]
-        v = w[j] - Lp / Lpp
-        w[j] = max(fabs(v) - 1 / Lpp, 0)
-
-        if v < 0:
-            w[j] *= -1
-
-        z = w[j] - old_w
-
-        # Update predictions
-        for ii in xrange(n_nz):
-            i = indices[ii]
-            b[i] += z * data[ii]
-
-        if old_w == 0 and z != 0:
-            n_sv[0] += 1
-        elif z != 0 and old_w == -z:
-            n_sv[0] -= 1
-
-        return 0
+        L_new[0] *= C
 
 
 cdef class SquaredHinge(LossFunction):
 
-    # L2 regularization
+    def __init__(self, int max_steps=30):
+        self.max_steps = max_steps
+
+    # Binary
 
     cdef void derivatives(self,
                           int j,
@@ -657,6 +616,9 @@ cdef class SquaredHinge(LossFunction):
 
 cdef class ModifiedHuber(LossFunction):
 
+    def __init__(self, int max_steps=30):
+        self.max_steps = max_steps
+
     cdef void derivatives(self,
                           int j,
                           double C,
@@ -728,6 +690,9 @@ cdef class ModifiedHuber(LossFunction):
 
 
 cdef class Log(LossFunction):
+
+    def __init__(self, int max_steps=30):
+        self.max_steps = max_steps
 
     # Binary
 
