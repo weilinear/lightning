@@ -57,9 +57,8 @@ cdef class LossFunction:
         cdef double z_diff, z_old, Dj_z, cond
 
         # Compute derivatives
-        self.derivatives_l2(j, C,
-                            indices, data, n_nz, col, y, b,
-                            Dp, &Dpp, &Dj_zero, &bound)
+        self.derivatives(j, C, indices, data, n_nz, col, y, b,
+                         Dp, &Dpp, &Dj_zero, &bound)
 
         Dp[0] = w[j] + Dp[0]
         Dpp = 1 + Dpp
@@ -87,8 +86,8 @@ cdef class LossFunction:
                 break
 
             # Update old predictions
-            self.update_l2(j, z_diff, C,
-                           indices, data, n_nz, col, y, b, &Dj_z)
+            self.update(j, z_diff, C, indices, data, n_nz,
+                        col, y, b, &Dj_z)
 
             z_old = z
 
@@ -105,32 +104,32 @@ cdef class LossFunction:
 
         w[j] += z
 
-    cdef void derivatives_l2(self,
-                             int j,
-                             double C,
-                             int *indices,
-                             double *data,
-                             int n_nz,
-                             double *col,
-                             double *y,
-                             double *b,
-                             double *Dp,
-                             double *Dpp,
-                             double *Dj_zero,
-                             double *bound):
+    cdef void derivatives(self,
+                          int j,
+                          double C,
+                          int *indices,
+                          double *data,
+                          int n_nz,
+                          double *col,
+                          double *y,
+                          double *b,
+                          double *Lp,
+                          double *Lpp,
+                          double *L,
+                          double *bound):
         raise NotImplementedError()
 
-    cdef void update_l2(self,
-                        int j,
-                        double z_diff,
-                        double C,
-                        int *indices,
-                        double *data,
-                        int n_nz,
-                        double *col,
-                        double *y,
-                        double *b,
-                        double *Dj_z):
+    cdef void update(self,
+                     int j,
+                     double z_diff,
+                     double C,
+                     int *indices,
+                     double *data,
+                     int n_nz,
+                     double *col,
+                     double *y,
+                     double *b,
+                     double *L_new):
         raise NotImplementedError()
 
     # L1 regularization
@@ -163,9 +162,8 @@ cdef class LossFunction:
         cdef double beta = 0.5
 
         # Compute derivatives
-        self.derivatives_l2(j, C,
-                            indices, data, n_nz, col, y, b,
-                            &Lp, &Lpp, &Lj_zero, &xj_sq)
+        self.derivatives(j, C, indices, data, n_nz, col, y, b,
+                         &Lp, &Lpp, &Lj_zero, &xj_sq)
 
         xj_sq *= C
         Lpp = max(Lpp, 1e-12)
@@ -223,8 +221,7 @@ cdef class LossFunction:
                 break
 
             # Compute objective function value.
-            self.update_l2(j, z_diff, C,
-                           indices, data, n_nz, col, y, b, &Lj_z)
+            self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
 
             # Check stopping condition.
             cond = cond + Lj_z - Lj_zero
@@ -246,24 +243,24 @@ cdef class LossFunction:
 
         return 0
 
-    # L1/L2 regularization (multiclass)
+    # L1/L2 regularization
 
-    cdef void solve_l1l2_mc(self,
-                            int j,
-                            double C,
-                            np.ndarray[double, ndim=2, mode='c'] w,
-                            int n_vectors,
-                            int* indices,
-                            double *data,
-                            int n_nz,
-                            np.ndarray[int, ndim=1] y,
-                            np.ndarray[double, ndim=2, mode='fortran'] Y,
-                            int multiclass,
-                            np.ndarray[double, ndim=2, mode='c'] b,
-                            np.ndarray[double, ndim=1, mode='c'] g,
-                            np.ndarray[double, ndim=1, mode='c'] d,
-                            np.ndarray[double, ndim=1, mode='c'] d_old,
-                            double* Z):
+    cdef void solve_l1l2(self,
+                         int j,
+                         double C,
+                         np.ndarray[double, ndim=2, mode='c'] w,
+                         int n_vectors,
+                         int* indices,
+                         double *data,
+                         int n_nz,
+                         int* y,
+                         np.ndarray[double, ndim=2, mode='fortran'] Y,
+                         int multiclass,
+                         np.ndarray[double, ndim=2, mode='c'] b,
+                         double *g,
+                         double *d,
+                         double *d_old,
+                         double* Z):
 
         cdef int i, k, ii, n
         cdef double scaling, delta, L, R_j, Lpp_max
@@ -280,9 +277,8 @@ cdef class LossFunction:
         cdef double z_diff
 
         if multiclass:
-            self.derivatives_l1l2_mc(j, C, n_vectors,
-                                     indices, data, n_nz, y, b, g, Z,
-                                     &L, &Lpp_max)
+            self.derivatives_mc(j, C, n_vectors, indices, data, n_nz,
+                                y, b, g, Z, &L, &Lpp_max)
         else:
             L = 0
             Lpp_max = -DBL_MAX
@@ -291,9 +287,8 @@ cdef class LossFunction:
             Z_ptr = Z
 
             for k in xrange(n_vectors):
-                self.derivatives_l2(j, C, indices, data, n_nz,
-                                    Z_ptr, y_ptr, b_ptr,
-                                    &g[k], &Lpp_tmp, &L_tmp, &bound)
+                self.derivatives(j, C, indices, data, n_nz, Z_ptr, y_ptr,
+                                 b_ptr, &g[k], &Lpp_tmp, &L_tmp, &bound)
                 L += L_tmp
                 Lpp_max = max(Lpp_max, Lpp_tmp)
                 y_ptr += n_samples
@@ -332,8 +327,8 @@ cdef class LossFunction:
 
             # Update predictions, normalizations and objective value.
             if multiclass:
-                self.update_l1l2_mc(C, n_vectors, indices, data, n_nz,
-                                    y, b, d, d_old, Z, &L_new)
+                self.update_mc(C, n_vectors, indices, data, n_nz,
+                               y, b, d, d_old, Z, &L_new)
             else:
                 L_new = 0
                 y_ptr = <double*>Y.data
@@ -342,8 +337,8 @@ cdef class LossFunction:
 
                 for k in xrange(n_vectors):
                     z_diff = d_old[k] - d[k]
-                    self.update_l2(j, z_diff, C, indices, data, n_nz,
-                                   Z_ptr, y_ptr, b_ptr, &L_tmp)
+                    self.update(j, z_diff, C, indices, data, n_nz,
+                                Z_ptr, y_ptr, b_ptr, &L_tmp)
                     L_new += L_tmp
                     y_ptr += n_samples
                     b_ptr += n_samples
@@ -374,33 +369,33 @@ cdef class LossFunction:
         for k in xrange(n_vectors):
             w[k, j] += d[k]
 
-    cdef void derivatives_l1l2_mc(self,
-                                  int j,
-                                  double C,
-                                  int n_vectors,
-                                  int* indices,
-                                  double *data,
-                                  int n_nz,
-                                  np.ndarray[int, ndim=1] y,
-                                  np.ndarray[double, ndim=2, mode='c'] b,
-                                  np.ndarray[double, ndim=1, mode='c'] g,
-                                  double* Z,
-                                  double* L,
-                                  double* Lpp_max):
-        raise NotImplementedError()
-
-    cdef void update_l1l2_mc(self,
+    cdef void derivatives_mc(self,
+                             int j,
                              double C,
                              int n_vectors,
                              int* indices,
                              double *data,
                              int n_nz,
-                             np.ndarray[int, ndim=1] y,
+                             int* y,
                              np.ndarray[double, ndim=2, mode='c'] b,
-                             np.ndarray[double, ndim=1, mode='c'] d,
-                             np.ndarray[double, ndim=1, mode='c'] d_old,
+                             double* g,
                              double* Z,
-                             double* L_new):
+                             double* L,
+                             double* Lpp_max):
+        raise NotImplementedError()
+
+    cdef void update_mc(self,
+                        double C,
+                        int n_vectors,
+                        int* indices,
+                        double *data,
+                        int n_nz,
+                        int* y,
+                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double *d,
+                        double *d_old,
+                        double* Z,
+                        double* L_new):
         raise NotImplementedError()
 
 
@@ -418,23 +413,23 @@ cdef class Squared(LossFunction):
                        double *col,
                        double *y,
                        double *b,
-                       double *Dp):
+                       double *Lp):
         cdef int i, ii
-        cdef double Dpp, old_w, z
+        cdef double Lpp, old_w, z
 
-        Dpp = 0
-        Dp[0] = 0
+        Lpp = 0
+        Lp[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            Dpp += data[ii] * data[ii]
-            Dp[0] += b[i] * data[ii]
+            Lpp += data[ii] * data[ii]
+            Lp[0] += b[i] * data[ii]
 
-        Dpp = 2 * C * Dpp + 1
-        Dp[0] = 2 * C * Dp[0] + w[j]
+        Lpp = 2 * C * Lpp + 1
+        Lp[0] = 2 * C * Lp[0] + w[j]
 
         old_w = w[j]
-        z = -Dp[0] / Dpp
+        z = -Lp[0] / Lpp
         w[j] += z
 
         for ii in xrange(n_nz):
@@ -518,26 +513,26 @@ cdef class SquaredHinge(LossFunction):
 
     # L2 regularization
 
-    cdef void derivatives_l2(self,
-                             int j,
-                             double C,
-                             int *indices,
-                             double *data,
-                             int n_nz,
-                             double *col,
-                             double *y,
-                             double *b,
-                             double *Dp,
-                             double *Dpp,
-                             double *Dj_zero,
-                             double *bound):
+    cdef void derivatives(self,
+                          int j,
+                          double C,
+                          int *indices,
+                          double *data,
+                          int n_nz,
+                          double *col,
+                          double *y,
+                          double *b,
+                          double *Lp,
+                          double *Lpp,
+                          double *L,
+                          double *bound):
         cdef int i, ii
         cdef double xj_sq = 0
         cdef double val
 
-        Dp[0] = 0
-        Dpp[0] = 0
-        Dj_zero[0] = 0
+        Lp[0] = 0
+        Lpp[0] = 0
+        L[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
@@ -546,55 +541,55 @@ cdef class SquaredHinge(LossFunction):
             xj_sq += val * val
 
             if b[i] > 0:
-                Dp[0] -= b[i] * val
-                Dpp[0] += val * val
-                Dj_zero[0] += b[i] * b[i]
+                Lp[0] -= b[i] * val
+                Lpp[0] += val * val
+                L[0] += b[i] * b[i]
 
-        Dp[0] = 2 * C * Dp[0]
-        Dpp[0] = 2 * C * Dpp[0]
+        Lp[0] = 2 * C * Lp[0]
+        Lpp[0] = 2 * C * Lpp[0]
         bound[0] = xj_sq
-        Dj_zero[0] *= C
+        L[0] *= C
 
-    cdef void update_l2(self,
-                        int j,
-                        double z_diff,
-                        double C,
-                        int *indices,
-                        double *data,
-                        int n_nz,
-                        double *col,
-                        double *y,
-                        double *b,
-                        double *Dj_z):
+    cdef void update(self,
+                     int j,
+                     double z_diff,
+                     double C,
+                     int *indices,
+                     double *data,
+                     int n_nz,
+                     double *col,
+                     double *y,
+                     double *b,
+                     double *L_new):
         cdef int i, ii
         cdef double b_new
 
-        Dj_z[0] = 0
+        L_new[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
             b_new = b[i] + z_diff * col[i]
             b[i] = b_new
             if b_new > 0:
-                Dj_z[0] += b_new * b_new
+                L_new[0] += b_new * b_new
 
-        Dj_z[0] *= C
+        L_new[0] *= C
 
-    # L1/L2 regularization (multi-class)
+    # Multiclass
 
-    cdef void derivatives_l1l2_mc(self,
-                                  int j,
-                                  double C,
-                                  int n_vectors,
-                                  int* indices,
-                                  double *data,
-                                  int n_nz,
-                                  np.ndarray[int, ndim=1] y,
-                                  np.ndarray[double, ndim=2, mode='c'] b,
-                                  np.ndarray[double, ndim=1, mode='c'] g,
-                                  double* Z,
-                                  double* L,
-                                  double* Lpp_max):
+    cdef void derivatives_mc(self,
+                             int j,
+                             double C,
+                             int n_vectors,
+                             int* indices,
+                             double *data,
+                             int n_nz,
+                             int* y,
+                             np.ndarray[double, ndim=2, mode='c'] b,
+                             double* g,
+                             double* Z,
+                             double* L,
+                             double* Lpp_max):
 
         cdef int ii, i, k
         cdef double tmp
@@ -626,18 +621,18 @@ cdef class SquaredHinge(LossFunction):
         Lpp_max[0] *= 2 * C
         Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
 
-    cdef void update_l1l2_mc(self,
-                             double C,
-                             int n_vectors,
-                             int* indices,
-                             double *data,
-                             int n_nz,
-                             np.ndarray[int, ndim=1] y,
-                             np.ndarray[double, ndim=2, mode='c'] b,
-                             np.ndarray[double, ndim=1, mode='c'] d,
-                             np.ndarray[double, ndim=1, mode='c'] d_old,
-                             double* Z,
-                             double* L_new):
+    cdef void update_mc(self,
+                        double C,
+                        int n_vectors,
+                        int* indices,
+                        double *data,
+                        int n_nz,
+                        int* y,
+                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double *d,
+                        double *d_old,
+                        double* Z,
+                        double* L_new):
 
         cdef int ii, i, k
         cdef double tmp, b_new
@@ -662,26 +657,26 @@ cdef class SquaredHinge(LossFunction):
 
 cdef class ModifiedHuber(LossFunction):
 
-    cdef void derivatives_l2(self,
-                             int j,
-                             double C,
-                             int *indices,
-                             double *data,
-                             int n_nz,
-                             double *col,
-                             double *y,
-                             double *b,
-                             double *Dp,
-                             double *Dpp,
-                             double *Dj_zero,
-                             double *bound):
+    cdef void derivatives(self,
+                          int j,
+                          double C,
+                          int *indices,
+                          double *data,
+                          int n_nz,
+                          double *col,
+                          double *y,
+                          double *b,
+                          double *Lp,
+                          double *Lpp,
+                          double *L,
+                          double *bound):
         cdef int i, ii
         cdef double xj_sq = 0
         cdef double val
 
-        Dp[0] = 0
-        Dpp[0] = 0
-        Dj_zero[0] = 0
+        Lp[0] = 0
+        Lpp[0] = 0
+        L[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
@@ -690,34 +685,34 @@ cdef class ModifiedHuber(LossFunction):
             xj_sq += val * val
 
             if b[i] > 2:
-                Dp[0] -= 2 * val
+                Lp[0] -= 2 * val
                 # -4 yp = 4 (b[i] - 1)
-                Dj_zero[0] += 4 * (b[i] - 1)
+                L[0] += 4 * (b[i] - 1)
             elif b[i] > 0:
-                Dp[0] -= b[i] * val
-                Dpp[0] += val * val
-                Dj_zero[0] += b[i] * b[i]
+                Lp[0] -= b[i] * val
+                Lpp[0] += val * val
+                L[0] += b[i] * b[i]
 
-        Dp[0] = 2 * C * Dp[0]
-        Dpp[0] = 2 * C * Dpp[0]
+        Lp[0] = 2 * C * Lp[0]
+        Lpp[0] = 2 * C * Lpp[0]
         bound[0] = 0
-        Dj_zero[0] *= C
+        L[0] *= C
 
-    cdef void update_l2(self,
-                        int j,
-                        double z_diff,
-                        double C,
-                        int *indices,
-                        double *data,
-                        int n_nz,
-                        double *col,
-                        double *y,
-                        double *b,
-                        double *Dj_z):
+    cdef void update(self,
+                     int j,
+                     double z_diff,
+                     double C,
+                     int *indices,
+                     double *data,
+                     int n_nz,
+                     double *col,
+                     double *y,
+                     double *b,
+                     double *L_new):
         cdef int i, ii
         cdef double b_new
 
-        Dj_z[0] = 0
+        L_new[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
@@ -725,37 +720,37 @@ cdef class ModifiedHuber(LossFunction):
             b[i] = b_new
 
             if b_new > 2:
-                Dj_z[0] += 4 * (b[i] - 1)
+                L_new[0] += 4 * (b[i] - 1)
             elif b_new > 0:
-                Dj_z[0] += b_new * b_new
+                L_new[0] += b_new * b_new
 
-        Dj_z[0] *= C
+        L_new[0] *= C
 
 
 cdef class Log(LossFunction):
 
-    # L2 regularization
+    # Binary
 
-    cdef void derivatives_l2(self,
-                             int j,
-                             double C,
-                             int *indices,
-                             double *data,
-                             int n_nz,
-                             double *col,
-                             double *y,
-                             double *b,
-                             double *Dp,
-                             double *Dpp,
-                             double *Dj_zero,
-                             double *bound):
+    cdef void derivatives(self,
+                          int j,
+                          double C,
+                          int *indices,
+                          double *data,
+                          int n_nz,
+                          double *col,
+                          double *y,
+                          double *b,
+                          double *Lp,
+                          double *Lpp,
+                          double *L,
+                          double *bound):
         cdef int i, ii
         cdef double xj_sq = 0
         cdef double val, tau, exppred
 
-        Dp[0] = 0
-        Dpp[0] = 0
-        Dj_zero[0] = 0
+        Lp[0] = 0
+        Lpp[0] = 0
+        L[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
@@ -764,56 +759,56 @@ cdef class Log(LossFunction):
 
             exppred = 1 + 1 / b[i]
             tau = 1 / exppred
-            Dp[0] += val * (tau - 1)
-            Dpp[0] += val * val * tau * (1 - tau)
-            Dj_zero[0] += log(exppred)
+            Lp[0] += val * (tau - 1)
+            Lpp[0] += val * val * tau * (1 - tau)
+            L[0] += log(exppred)
 
-        Dp[0] = C * Dp[0]
-        Dpp[0] = C * Dpp[0]
-        Dj_zero[0] *= C
+        Lp[0] = C * Lp[0]
+        Lpp[0] = C * Lpp[0]
+        L[0] *= C
         bound[0] = 0
 
 
-    cdef void update_l2(self,
-                        int j,
-                        double z_diff,
-                        double C,
-                        int *indices,
-                        double *data,
-                        int n_nz,
-                        double *col,
-                        double *y,
-                        double *b,
-                        double *Dj_z):
+    cdef void update(self,
+                     int j,
+                     double z_diff,
+                     double C,
+                     int *indices,
+                     double *data,
+                     int n_nz,
+                     double *col,
+                     double *y,
+                     double *b,
+                     double *L_new):
         cdef int i, ii
         cdef double exppred
 
-        Dj_z[0] = 0
+        L_new[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
             b[i] /= exp(z_diff * col[i])
             exppred = 1 + 1 / b[i]
-            Dj_z[0] += log(exppred)
+            L_new[0] += log(exppred)
 
-        Dj_z[0] *= C
+        L_new[0] *= C
 
 
-    # L1/L2 regulariztion (multiclass)
+    # Multiclass
 
-    cdef void derivatives_l1l2_mc(self,
-                                  int j,
-                                  double C,
-                                  int n_vectors,
-                                  int* indices,
-                                  double *data,
-                                  int n_nz,
-                                  np.ndarray[int, ndim=1] y,
-                                  np.ndarray[double, ndim=2, mode='c'] b,
-                                  np.ndarray[double, ndim=1, mode='c'] g,
-                                  double* Z,
-                                  double* L,
-                                  double* Lpp_max):
+    cdef void derivatives_mc(self,
+                             int j,
+                             double C,
+                             int n_vectors,
+                             int* indices,
+                             double *data,
+                             int n_nz,
+                             int* y,
+                             np.ndarray[double, ndim=2, mode='c'] b,
+                             double *g,
+                             double* Z,
+                             double* L,
+                             double* Lpp_max):
 
         cdef int ii, i, k
         cdef double Lpp, tmp
@@ -852,18 +847,18 @@ cdef class Log(LossFunction):
 
         Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
 
-    cdef void update_l1l2_mc(self,
-                             double C,
-                             int n_vectors,
-                             int* indices,
-                             double *data,
-                             int n_nz,
-                             np.ndarray[int, ndim=1] y,
-                             np.ndarray[double, ndim=2, mode='c'] b,
-                             np.ndarray[double, ndim=1, mode='c'] d,
-                             np.ndarray[double, ndim=1, mode='c'] d_old,
-                             double* Z,
-                             double* L_new):
+    cdef void update_mc(self,
+                        double C,
+                        int n_vectors,
+                        int* indices,
+                        double *data,
+                        int n_nz,
+                        int* y,
+                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double* d,
+                        double* d_old,
+                        double* Z,
+                        double* L_new):
         cdef int i, ii, k
         cdef double tmp
 
@@ -1064,9 +1059,11 @@ def _primal_cd_l1l2r(self,
 
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
-            loss.solve_l1l2_mc(j, C, w, n_vectors,
-                               indices, data, n_nz, y, Y, multiclass,
-                               b, g, d, d_old, <double*>Z.data)
+            loss.solve_l1l2(j, C, w, n_vectors,
+                            indices, data, n_nz,
+                            <int*>y.data, Y, multiclass,
+                            b, <double*>g.data, <double*>d.data,
+                            <double*>d_old.data, <double*>Z.data)
 
 
 def _primal_cd_l2r(self,
