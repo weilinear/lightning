@@ -271,7 +271,7 @@ cdef class LossFunction:
                          double *d_old,
                          double* Z):
 
-        cdef int i, k, ii, n
+        cdef int i, k, ii, step
         cdef double scaling, delta, L, R_j, Lpp_max, Lp_max
         cdef double tmp, L_new, R_j_new
         cdef double L_tmp, bound, Lpp_tmp
@@ -337,7 +337,8 @@ cdef class LossFunction:
             delta += d[k] * g[k]
 
         # Perform line search.
-        for n in xrange(self.max_steps):
+        step = 1
+        while True:
 
             # Update predictions, normalizations and objective value.
             if multiclass:
@@ -358,6 +359,9 @@ cdef class LossFunction:
                     b_ptr += n_samples
                     Z_ptr += n_samples
 
+            if step == self.max_steps:
+                break
+
             # Compute regularization term.
             R_j_new = 0
             for k in xrange(n_vectors):
@@ -366,18 +370,19 @@ cdef class LossFunction:
             R_j_new = sqrt(R_j_new)
             # R_new = R - R_j + R_j_new
 
-            if n == 0:
+            if step == 1:
                 delta += R_j_new - R_j
                 delta *= sigma
 
             # Check decrease condition
             if L_new - L + R_j_new - R_j <= delta:
                 break
-            else:
-                delta *= beta
-                for k in xrange(n_vectors):
-                    d_old[k] = d[k]
-                    d[k] *= beta
+
+            delta *= beta
+            for k in xrange(n_vectors):
+                d_old[k] = d[k]
+                d[k] *= beta
+            step += 1
 
         # Update solution
         for k in xrange(n_vectors):
