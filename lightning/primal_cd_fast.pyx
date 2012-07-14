@@ -1030,6 +1030,10 @@ def _primal_cd_l1l2r(self,
                             b, <double*>g.data, <double*>d.data,
                             <double*>d_old.data, <double*>Z.data)
 
+            if verbose >= 1 and s % 100 == 0:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+
 
 def _primal_cd_l2r(self,
                    np.ndarray[double, ndim=1, mode='c'] w,
