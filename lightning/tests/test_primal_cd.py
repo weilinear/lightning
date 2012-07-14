@@ -516,3 +516,11 @@ def test_l1l2_multi_task_log_loss():
     clf.fit(mult_dense, mult_target)
     assert_almost_equal(clf.score(mult_dense, mult_target), 0.8633, 3)
 
+
+def test_l1l2_multi_task_square_loss():
+    clf = PrimalLinearSVC(penalty="l1/l2", loss="squared",
+                          multiclass=False,
+                          max_iter=20, C=5.0, random_state=0)
+    clf.fit(mult_dense, mult_target)
+    assert_almost_equal(clf.score(mult_dense, mult_target), 0.8066, 3)
+
