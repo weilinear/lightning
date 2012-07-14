@@ -433,7 +433,7 @@ def test_l1l2_multiclass_log_loss():
         sel = np.array([df[i, int(mult_target[i])] for i in xrange(df.shape[0])])
         df -= sel[:, np.newaxis]
         df = np.exp(df)
-        assert_array_almost_equal(clf.errors_, df.T, 4)
+        assert_array_almost_equal(clf.errors_, df.T)
         assert_equal(np.sum(clf.coef_ != 0), 300)
 
         clf = PrimalLinearSVC(penalty="l1/l2", loss="log", multiclass=True,
@@ -457,7 +457,7 @@ def test_l1l2_multiclass_squared_hinge_loss():
         for i in xrange(n_samples):
             for k in xrange(n_vectors):
                 diff[k, i] = 1 - (df[i, mult_target[i]] - df[i, k])
-        assert_array_almost_equal(clf.errors_, diff, 5)
+        assert_array_almost_equal(clf.errors_, diff)
         assert_equal(np.sum(clf.coef_ != 0), 300)
 
         clf = PrimalLinearSVC(penalty="l1/l2", loss="squared_hinge",
