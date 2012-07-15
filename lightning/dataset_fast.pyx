@@ -17,8 +17,9 @@ from libc cimport stdlib
 
 import numpy as np
 cimport numpy as np
-
 np.import_array()
+
+from sklearn.utils.extmath import safe_sparse_dot
 
 cdef extern from "math.h":
    double exp(double)
@@ -66,6 +67,31 @@ cdef class Dataset:
     cpdef int get_n_features(self):
         return self.n_features
 
+    def dot(self, coef):
+        return NotImplementedError()
+
+
+cdef class ContiguousDataset(Dataset):
+
+    def __init__(self, np.ndarray[double, ndim=2, mode='c'] X):
+        self.n_samples = X.shape[0]
+        self.n_features = X.shape[1]
+        self.data = <double*> X.data
+        self.X = X
+
+    def __cinit__(self, np.ndarray[double, ndim=2, mode='c'] X):
+        cdef int i
+        cdef int n_samples = X.shape[0]
+        self.indices = <int*> stdlib.malloc(sizeof(int) * n_samples)
+        for i in xrange(n_samples):
+            self.indices[i] = i
+
+    def __dealloc__(self):
+        stdlib.free(self.indices)
+
+    def dot(self, coef):
+        return safe_sparse_dot(self.X, coef)
+
 
 cdef class FortranDataset(Dataset):
 
@@ -73,6 +99,7 @@ cdef class FortranDataset(Dataset):
         self.n_samples = X.shape[0]
         self.n_features = X.shape[1]
         self.data = <double*> X.data
+        self.X = X
 
     def __cinit__(self, np.ndarray[double, ndim=2, mode='fortran'] X):
         cdef int i
@@ -93,6 +120,9 @@ cdef class FortranDataset(Dataset):
         data[0] = self.data + j * self.n_samples
         n_nz[0] = self.n_samples
 
+    def dot(self, coef):
+        return safe_sparse_dot(self.X, coef)
+
 
 cdef class CSCDataset(Dataset):
 
@@ -107,6 +137,8 @@ cdef class CSCDataset(Dataset):
         self.indices = <int*> X_indices.data
         self.indptr = <int*> X_indptr.data
 
+        self.X = X
+
     cdef void get_column_ptr(self,
                              int j,
                              int** indices,
@@ -116,6 +148,10 @@ cdef class CSCDataset(Dataset):
         data[0] = self.data + self.indptr[j]
         n_nz[0] = self.indptr[j + 1] - self.indptr[j]
 
+    def dot(self, coef):
+        return safe_sparse_dot(self.X, coef)
+
+
 DEF LINEAR_KERNEL = 1
 DEF POLY_KERNEL = 2
 DEF RBF_KERNEL = 3
@@ -124,6 +160,7 @@ KERNELS = {"linear" : LINEAR_KERNEL,
            "poly" : POLY_KERNEL,
            "polynomial" : POLY_KERNEL,
            "rbf" : RBF_KERNEL}
+
 
 cdef class KernelDataset(Dataset):
 
@@ -184,8 +221,7 @@ cdef class KernelDataset(Dataset):
         for i in xrange(n_samples):
             self.n_computed[i] = 0
 
-        if self.capacity == 0:
-            self.cache = <double*> stdlib.malloc(sizeof(double) * n_samples)
+        self.cache = <double*> stdlib.malloc(sizeof(double) * n_samples)
 
     def __dealloc__(self):
         # De-allocate indices.
@@ -197,8 +233,7 @@ cdef class KernelDataset(Dataset):
         del self.columns
         stdlib.free(self.n_computed)
 
-        if self.capacity == 0:
-            stdlib.free(self.cache)
+        stdlib.free(self.cache)
 
     cdef void _linear_kernel(self, int j, double *out):
         cdef double dot = 0
@@ -343,3 +378,25 @@ cdef class KernelDataset(Dataset):
         indices[0] = self.indices
         data[0] = self._get_column(j)
         n_nz[0] = self.n_samples
+
+    def dot(self, coef):
+        cdef int n_features = coef.shape[0]
+        cdef int n_vectors = coef.shape[1]
+
+        cdef np.ndarray[double, ndim=2, mode='c'] out
+        out = np.zeros((self.n_samples, n_vectors), dtype=np.float64)
+
+        cdef np.ndarray[double, ndim=2, mode='c'] coef_
+        coef_ = np.ascontiguousarray(coef, dtype=np.float64)
+
+        cdef int i, j, k
+
+        for j in xrange(n_features):
+            self._kernel(j, self.cache)
+
+            for i in xrange(self.n_samples):
+                for k in xrange(n_vectors):
+                    out[i, k] += self.cache[i] * coef_[j, k]
+
+        return out
+

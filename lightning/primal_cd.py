@@ -22,6 +22,11 @@ from .primal_cd_fast import SquaredHinge
 from .primal_cd_fast import ModifiedHuber
 from .primal_cd_fast import Log
 
+from .dataset_fast import ContiguousDataset
+from .dataset_fast import FortranDataset
+from .dataset_fast import CSCDataset
+from .dataset_fast import KernelDataset
+
 
 class BaseSVC(object):
 
@@ -33,6 +38,30 @@ class BaseSVC(object):
             "log" : Log(),
         }
         return losses[self.loss]
+
+    def predict(self, X):
+        pred = self.decision_function(X)
+        out = self.label_binarizer_.inverse_transform(pred, threshold=0)
+
+        if hasattr(self, "label_encoder_"):
+            out = self.label_encoder_.inverse_transform(out)
+
+        return out
+
+    def _get_dataset(self, X, Y=None):
+        if hasattr(self, "kernel"):
+            if Y is None:
+                Y = X
+            return KernelDataset(X, Y, self.kernel,
+                                 self.gamma, self.coef0, self.degree,
+                                 self.cache_mb, 1, self.verbose)
+        else:
+            if sp.isspmatrix_csc(X):
+                return CSCDataset(X)
+            elif np.isfortran(X):
+                return FortranDataset(X)
+            else:
+                return ContiguousDataset(X)
 
 
 class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
@@ -113,6 +142,10 @@ class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
                                    self.callback, verbose=self.verbose)
 
         return self
+
+    def decision_function(self, X):
+        ds = self._get_dataset(X)
+        return ds.dot(self.coef_.T) + self.intercept_
 
 
 class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
@@ -251,6 +284,10 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         self._post_process(A)
 
         return self
+
+    def decision_function(self, X):
+        ds = self._get_dataset(X, self.support_vectors_)
+        return ds.dot(self.coef_.T) + self.intercept_
 
 
 def C_lower_bound(X, y, kernel=None, search_size=None, random_state=None,

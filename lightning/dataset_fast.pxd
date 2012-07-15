@@ -21,10 +21,18 @@ cdef class Dataset:
     cpdef int get_n_features(self)
 
 
+cdef class ContiguousDataset(Dataset):
+
+    cdef int* indices
+    cdef double* data
+    cdef object X
+
+
 cdef class FortranDataset(Dataset):
 
     cdef int* indices
     cdef double* data
+    cdef object X
 
     cdef void get_column_ptr(self,
                              int j,
@@ -38,6 +46,7 @@ cdef class CSCDataset(Dataset):
     cdef int* indices
     cdef double* data
     cdef int* indptr
+    cdef object X
 
     cdef void get_column_ptr(self,
                              int j,

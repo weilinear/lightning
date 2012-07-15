@@ -14,9 +14,6 @@ from .predict_fast import predict_alpha
 from .predict_fast import decision_function_alpha
 from .kernel_fast import get_kernel
 from .random import RandomState
-from .dataset_fast import FortranDataset
-from .dataset_fast import CSCDataset
-from .dataset_fast import KernelDataset
 
 
 class BaseClassifier(BaseEstimator):
@@ -76,14 +73,6 @@ class BaseLinearClassifier(BaseClassifier):
 
         return out
 
-    def _get_dataset(self, X):
-        if sp.isspmatrix_csc(X):
-            return CSCDataset(X)
-        elif np.isfortran(X):
-            return FortranDataset(X)
-        else:
-            raise ValueError("Not supported format for X.")
-
 
 class BaseKernelClassifier(BaseClassifier):
 
@@ -126,12 +115,6 @@ class BaseKernelClassifier(BaseClassifier):
     def _get_kernel(self):
         return get_kernel(self.kernel, **self._kernel_params())
 
-    def _get_dataset(self, X, Y=None):
-        if Y is None:
-            Y = X
-        return KernelDataset(X, Y, self.kernel,
-                             self.gamma, self.coef0, self.degree,
-                             self.cache_mb, 1, self.verbose)
 
     def _post_process(self, X):
         # We can't know the support vectors when using precomputed kernels.

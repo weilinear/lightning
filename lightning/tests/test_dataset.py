@@ -8,11 +8,36 @@ from nose.tools import assert_raises, assert_true, assert_equal, \
 
 from sklearn.datasets.samples_generator import make_classification
 from sklearn.metrics.pairwise import pairwise_kernels
+from sklearn.utils import check_random_state
 
+from lightning.dataset_fast import ContiguousDataset
+from lightning.dataset_fast import FortranDataset
+from lightning.dataset_fast import CSCDataset
 from lightning.dataset_fast import KernelDataset
 
 X, _ = make_classification(n_samples=20, n_features=100,
                            n_informative=5, n_classes=2, random_state=0)
+X2, _ = make_classification(n_samples=10, n_features=100,
+                            n_informative=5, n_classes=2, random_state=0)
+
+X_csc = sp.csc_matrix(X)
+
+rs = check_random_state(0)
+
+
+def test_contiguous_dot():
+    ds = ContiguousDataset(X)
+    assert_array_almost_equal(ds.dot(X2.T), np.dot(X, X2.T))
+
+
+def test_fortran_dot():
+    ds = FortranDataset(np.asfortranarray(X))
+    assert_array_almost_equal(ds.dot(X2.T), np.dot(X, X2.T))
+
+
+def test_csc_dot():
+    ds = CSCDataset(X_csc)
+    assert_array_almost_equal(ds.dot(X2.T), np.dot(X, X2.T))
 
 
 def check_kernel(K, kd):
@@ -38,3 +63,11 @@ def test_dataset_rbf_kernel():
     K = pairwise_kernels(X, metric="rbf", gamma=0.1)
     kd = KernelDataset(X, X, "rbf", gamma=0.1)
     check_kernel(K, kd)
+
+
+def test_kernel_dot():
+    coef = rs.randn(X2.shape[0], 3)
+    K = pairwise_kernels(X, X2, metric="rbf", gamma=0.1)
+    kd = KernelDataset(X, X2, "rbf", gamma=0.1)
+    assert_array_almost_equal(kd.dot(coef),
+                              np.dot(K, coef))
