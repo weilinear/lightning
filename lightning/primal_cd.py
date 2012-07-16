@@ -166,10 +166,6 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
         self.support_indices_ = np.arange(n_features, dtype=np.int32)[nz]
 
-        if np.sum(nz) == 0:
-            # Empty model...
-            return self
-
         if self.kernel:
             self._post_process(A)
 

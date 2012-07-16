@@ -73,13 +73,14 @@ class BaseClassifier(BaseEstimator):
         # We can't know the support vectors when using precomputed kernels.
         if self.kernel != "precomputed":
             sv = np.sum(self.coef_ != 0, axis=0, dtype=bool)
-            self.coef_ = np.ascontiguousarray(self.coef_[:, sv])
-            mask = safe_mask(X, sv)
-            self.support_vectors_ = np.ascontiguousarray(X[mask])
-            self.support_indices_ = np.arange(X.shape[0], dtype=np.int32)[sv]
+            if np.sum(sv) > 0:
+                self.coef_ = np.ascontiguousarray(self.coef_[:, sv])
+                mask = safe_mask(X, sv)
+                self.support_vectors_ = np.ascontiguousarray(X[mask])
+                self.support_indices_ = np.arange(X.shape[0], dtype=np.int32)[sv]
 
-        if self.verbose >= 1:
-            print "Number of support vectors:", np.sum(sv)
+            if self.verbose >= 1:
+                print "Number of support vectors:", np.sum(sv)
 
     def predict(self, X):
         pred = self.decision_function(X)
