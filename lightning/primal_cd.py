@@ -191,35 +191,3 @@ def C_lower_bound(X, y, kernel=None, search_size=None, random_state=None,
         raise ValueError('Ill-posed')
 
     return 0.5 / den
-
-
-def C_upper_bound(X, y, clf, Cmin, Cmax, n_components, epsilon, verbose=0):
-    Nmax = np.inf
-    clf = clone(clf)
-
-    while Nmax - n_components > epsilon:
-        Cmid = (Cmin + Cmax) / 2
-
-        if verbose:
-            print "Fit clf for C=", Cmid
-
-        clf.set_params(C=Cmid)
-        clf.fit(X, y)
-        n_nz = clf.n_nonzero()
-
-        if verbose:
-            print "#NZ", n_nz
-
-        if n_nz < n_components:
-            # Regularization is too strong
-            Cmin = Cmid
-
-        elif n_nz > n_components:
-            # Regularization is too light
-            Cmax = Cmid
-            Nmax = n_nz
-
-    if verbose:
-        print "Solution: Cmax=", Cmax, "Nmax=", Nmax
-
-    return Cmax
