@@ -15,6 +15,11 @@ from .predict_fast import decision_function_alpha
 from .kernel_fast import get_kernel
 from .random import RandomState
 
+from .dataset_fast import ContiguousDataset
+from .dataset_fast import FortranDataset
+from .dataset_fast import CSCDataset
+from .dataset_fast import KernelDataset
+
 
 class BaseClassifier(BaseEstimator):
 
@@ -57,6 +62,48 @@ class BaseClassifier(BaseEstimator):
         n_vectors = 1 if n_classes <= 2 else n_classes
 
         return y, n_classes, n_vectors
+
+    def n_nonzero(self):
+        if self.support_indices_.shape[0] == 0:
+            return 0
+        else:
+            return np.sum(np.sum(self.coef_ != 0, axis=0, dtype=bool))
+
+    def _post_process(self, X):
+        # We can't know the support vectors when using precomputed kernels.
+        if self.kernel != "precomputed":
+            sv = np.sum(self.coef_ != 0, axis=0, dtype=bool)
+            self.coef_ = np.ascontiguousarray(self.coef_[:, sv])
+            mask = safe_mask(X, sv)
+            self.support_vectors_ = np.ascontiguousarray(X[mask])
+            self.support_indices_ = np.arange(X.shape[0], dtype=np.int32)[sv]
+
+        if self.verbose >= 1:
+            print "Number of support vectors:", np.sum(sv)
+
+    def predict(self, X):
+        pred = self.decision_function(X)
+        out = self.label_binarizer_.inverse_transform(pred, threshold=0)
+
+        if hasattr(self, "label_encoder_"):
+            out = self.label_encoder_.inverse_transform(out)
+
+        return out
+
+    def _get_dataset(self, X, Y=None):
+        if self.kernel is not None:
+            if Y is None:
+                Y = X
+            return KernelDataset(X, Y, self.kernel,
+                                 self.gamma, self.coef0, self.degree,
+                                 self.cache_mb, 1, self.verbose)
+        else:
+            if sp.isspmatrix_csc(X):
+                return CSCDataset(X)
+            elif np.isfortran(X):
+                return FortranDataset(X)
+            else:
+                return ContiguousDataset(X)
 
 
 class BaseLinearClassifier(BaseClassifier):

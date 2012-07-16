@@ -8,8 +8,9 @@ from sklearn.base import ClassifierMixin, clone
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import check_random_state
 from sklearn.utils import safe_asarray
+from sklearn.utils import safe_mask
 
-from .base import BaseLinearClassifier, BaseKernelClassifier
+from .base import BaseClassifier
 
 from .kernel_fast import get_kernel, KernelCache
 from .primal_cd_fast import _primal_cd_l1l2r
@@ -22,13 +23,8 @@ from .primal_cd_fast import SquaredHinge
 from .primal_cd_fast import ModifiedHuber
 from .primal_cd_fast import Log
 
-from .dataset_fast import ContiguousDataset
-from .dataset_fast import FortranDataset
-from .dataset_fast import CSCDataset
-from .dataset_fast import KernelDataset
 
-
-class BaseSVC(object):
+class BaseCD(object):
 
     def _get_loss(self):
         losses = {
@@ -39,121 +35,13 @@ class BaseSVC(object):
         }
         return losses[self.loss]
 
-    def predict(self, X):
-        pred = self.decision_function(X)
-        out = self.label_binarizer_.inverse_transform(pred, threshold=0)
 
-        if hasattr(self, "label_encoder_"):
-            out = self.label_encoder_.inverse_transform(out)
-
-        return out
-
-    def _get_dataset(self, X, Y=None):
-        if hasattr(self, "kernel"):
-            if Y is None:
-                Y = X
-            return KernelDataset(X, Y, self.kernel,
-                                 self.gamma, self.coef0, self.degree,
-                                 self.cache_mb, 1, self.verbose)
-        else:
-            if sp.isspmatrix_csc(X):
-                return CSCDataset(X)
-            elif np.isfortran(X):
-                return FortranDataset(X)
-            else:
-                return ContiguousDataset(X)
-
-
-class PrimalLinearSVC(BaseSVC, BaseLinearClassifier, ClassifierMixin):
+class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
-                 debiasing=False, max_iter=1000, tol=1e-3,
+                 debiasing=False, max_iter=50, tol=1e-3,
                  multiclass=False,
-                 termination="convergence", n_components=1000,
-                 warm_start=False, random_state=None,
-                 callback=None, verbose=0, n_jobs=1):
-        self.C = C
-        self.loss = loss
-        self.penalty = penalty
-        self.debiasing = debiasing
-        self.max_iter = max_iter
-        self.tol = tol
-        self.multiclass = multiclass
-        self.termination = termination
-        self.n_components = n_components
-        self.warm_start = warm_start
-        self.random_state = random_state
-        self.callback = callback
-        self.verbose = verbose
-        self.n_jobs = n_jobs
-        self.coef_ = None
-
-    def fit(self, X, y):
-        n_samples, n_features = X.shape
-        rs = self._get_random_state()
-
-        if sp.isspmatrix(X):
-            X = X.tocsc()
-        else:
-            X = np.asfortranarray(X, dtype=np.float64)
-
-        reencode = self.penalty == "l1/l2"
-        y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
-        Y = np.asfortranarray(self.label_binarizer_.transform(y))
-
-        kernel = get_kernel("linear")
-        kcache = KernelCache(kernel, n_samples, 0, 0, self.verbose)
-
-        if not self.warm_start or self.coef_ is None:
-            self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
-            self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
-
-            if self.loss == "squared":
-                self.errors_ -= 1 + Y.T
-
-        self.intercept_ = 0
-
-        indices = np.arange(n_features, dtype=np.int32)
-
-        if self.penalty == "l1/l2":
-            _primal_cd_l1l2r(self,
-                             self.coef_, self.errors_,
-                             self._get_dataset(X), y, Y, self.multiclass,
-                             indices, self._get_loss(),
-                             self.C, self.max_iter, rs, self.tol,
-                             self.callback, self.verbose)
-        else:
-            for i in xrange(n_vectors):
-                if self.penalty == "l1":
-                    _primal_cd_l1r(self, self.coef_[i], self.errors_[i],
-                                         self._get_dataset(X), Y[:, i],
-                                         indices, self._get_loss(),
-                                         "permute", 60,
-                                         self.termination, self.n_components,
-                                         self.C, self.max_iter, rs, self.tol,
-                                         self.callback, verbose=self.verbose)
-                else:
-                    _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                                   self._get_dataset(X), Y[:, i],
-                                   indices, self._get_loss(),
-                                   "permute", 60,
-                                   self.termination, self.n_components,
-                                   self.C, self.max_iter, rs, self.tol,
-                                   self.callback, verbose=self.verbose)
-
-        return self
-
-    def decision_function(self, X):
-        ds = self._get_dataset(X)
-        return ds.dot(self.coef_.T) + self.intercept_
-
-
-class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
-
-    def __init__(self, C=1.0, loss="squared_hinge", penalty="l1",
-                 debiasing=False, max_iter=10, tol=1e-3,
-                 multiclass=False,
-                 kernel="linear", gamma=0.1, coef0=1, degree=4,
+                 kernel=None, gamma=0.1, coef0=1, degree=4,
                  Cd=1.0, warm_debiasing=False,
                  selection="permute", search_size=60,
                  termination="convergence", n_components=1000,
@@ -187,47 +75,54 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         self.coef_ = None
 
     def fit(self, X, y, kcache=None):
-        n_samples = X.shape[0]
         rs = self._get_random_state()
-        X = np.ascontiguousarray(X, dtype=np.float64)
 
+        # Check data
+        if self.kernel:
+            X = np.ascontiguousarray(X, dtype=np.float64)
+            if self.components is not None:
+                A = np.ascontiguousarray(self.components, dtype=np.float64)
+            else:
+                A = X
+            self.support_vectors_ = A
+        else:
+            if sp.issparse(X):
+                X = X.tocsc()
+            else:
+                X = np.asfortranarray(X, dtype=np.float64)
+            A = None
+
+        # Create dataset
+        ds = self._get_dataset(X, A)
+        n_samples = ds.get_n_samples()
+        n_features = ds.get_n_features()
+
+        # Create label transformers
         reencode = self.penalty == "l1/l2"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
         Y = np.asfortranarray(self.label_binarizer_.transform(y))
 
-        A = X
-        C = self.C
-        termination = self.termination
-        selection = self.selection
-
-        if self.penalty == "l2" and self.components is not None:
-            A = self.components
-
+        # Initialize coefficients
         if self.warm_start and self.coef_ is not None:
-            coef = np.zeros((n_vectors, A.shape[0]), dtype=np.float64)
-            coef[:, self.support_indices_] = self.coef_
-            self.coef_ = coef
+            if self.kernel:
+                coef = np.zeros((n_vectors, n_features), dtype=np.float64)
+                coef[:, self.support_indices_] = self.coef_
+                self.coef_ = coef
         else:
-            self.coef_ = np.zeros((n_vectors, A.shape[0]), dtype=np.float64)
+            self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
             self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
 
             if self.loss == "squared":
                 self.errors_ -= 1 + Y.T
 
-        indices = np.arange(A.shape[0], dtype=np.int32)
-
-        if kcache is None:
-            kernel = self._get_kernel()
-            kcache = KernelCache(kernel, n_samples,
-                                 self.cache_mb, 1, self.verbose)
-
-        self.support_vectors_ = X
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
+        indices = np.arange(n_features, dtype=np.int32)
 
+        # Learning
         if self.penalty == "l1/l2":
             _primal_cd_l1l2r(self,
                              self.coef_, self.errors_,
-                             self._get_dataset(X), y, Y, self.multiclass,
+                             ds, y, Y, self.multiclass,
                              indices, self._get_loss(),
                              self.C, self.max_iter, rs, self.tol,
                              self.callback, self.verbose)
@@ -235,53 +130,49 @@ class PrimalSVC(BaseSVC, BaseKernelClassifier, ClassifierMixin):
         if self.penalty == "l1":
             for i in xrange(n_vectors):
                     _primal_cd_l1r(self, self.coef_[i], self.errors_[i],
-                                         self._get_dataset(X), Y[:, i],
-                                         indices, self._get_loss(),
-                                         self.selection, self.search_size,
-                                         self.termination, self.n_components,
-                                         self.C, self.max_iter, rs, self.tol,
-                                         self.callback, verbose=self.verbose)
+                                   ds, Y[:, i],
+                                   indices, self._get_loss(),
+                                   self.selection, self.search_size,
+                                   self.termination, self.n_components,
+                                   self.C, self.max_iter, rs, self.tol,
+                                   self.callback, verbose=self.verbose)
 
         if self.penalty == "l2":
             for i in xrange(n_vectors):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               self._get_dataset(X, A), Y[:, i],
+                               ds, Y[:, i],
                                indices, self._get_loss(),
                                self.selection, self.search_size,
-                               termination, self.n_components,
-                               C, self.max_iter, rs, self.tol,
+                               self.termination, self.n_components,
+                               self.C, self.max_iter, rs, self.tol,
                                self.callback, verbose=self.verbose)
 
         if self.debiasing:
-            sv = np.sum(self.coef_ != 0, axis=0, dtype=bool)
-            self.support_indices_ = np.arange(n_samples, dtype=np.int32)[sv]
+            nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
+            self.support_indices_ = np.arange(n_features, dtype=np.int32)[nz]
             indices = self.support_indices_.copy()
-            A = X
-            self.support_vectors_ = A
             if not self.warm_debiasing:
-                self.coef_ = np.zeros((n_vectors, n_samples), dtype=np.float64)
-                self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
-            C = self.Cd
-            termination = "convergence"
-            selection = "permute"
+                self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
+                self.errors_ = np.ones((n_vectors, n_features), dtype=np.float64)
 
             for i in xrange(n_vectors):
                 _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               self._get_dataset(X, A), Y[:, i],
+                               ds, Y[:, i],
                                indices, self._get_loss(),
-                               selection, self.search_size,
-                               termination, self.n_components,
-                               C, self.max_iter, rs, self.tol,
+                               "permute", self.search_size,
+                               "convergence", self.n_components,
+                               self.Cd, self.max_iter, rs, self.tol,
                                self.callback, verbose=self.verbose)
 
-        sv = np.sum(self.coef_ != 0, axis=0, dtype=bool)
-        self.support_indices_ = np.arange(A.shape[0], dtype=np.int32)[sv]
+        nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
+        self.support_indices_ = np.arange(n_features, dtype=np.int32)[nz]
 
-        if np.sum(sv) == 0:
+        if np.sum(nz) == 0:
             # Empty model...
             return self
 
-        self._post_process(A)
+        if self.kernel:
+            self._post_process(A)
 
         return self
 
@@ -319,19 +210,19 @@ def C_upper_bound(X, y, clf, Cmin, Cmax, n_components, epsilon, verbose=0):
 
         clf.set_params(C=Cmid)
         clf.fit(X, y)
-        n_sv = clf.n_support_vectors()
+        n_nz = clf.n_nonzero()
 
         if verbose:
-            print "#SV", clf.n_support_vectors()
+            print "#NZ", n_nz
 
-        if n_sv < n_components:
+        if n_nz < n_components:
             # Regularization is too strong
             Cmin = Cmid
 
-        elif n_sv > n_components:
+        elif n_nz > n_components:
             # Regularization is too light
             Cmax = Cmid
-            Nmax = n_sv
+            Nmax = n_nz
 
     if verbose:
         print "Solution: Cmax=", Cmax, "Nmax=", Nmax
