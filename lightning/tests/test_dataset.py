@@ -12,6 +12,7 @@ from sklearn.utils import check_random_state
 
 from lightning.dataset_fast import ContiguousDataset
 from lightning.dataset_fast import FortranDataset
+from lightning.dataset_fast import CSRDataset
 from lightning.dataset_fast import CSCDataset
 from lightning.dataset_fast import KernelDataset
 
@@ -20,6 +21,7 @@ X, _ = make_classification(n_samples=20, n_features=100,
 X2, _ = make_classification(n_samples=10, n_features=100,
                             n_informative=5, n_classes=2, random_state=0)
 
+X_csr = sp.csr_matrix(X)
 X_csc = sp.csc_matrix(X)
 
 rs = check_random_state(0)
@@ -32,6 +34,11 @@ def test_contiguous_dot():
 
 def test_fortran_dot():
     ds = FortranDataset(np.asfortranarray(X))
+    assert_array_almost_equal(ds.dot(X2.T), np.dot(X, X2.T))
+
+
+def test_csr_dot():
+    ds = CSRDataset(X_csr)
     assert_array_almost_equal(ds.dot(X2.T), np.dot(X, X2.T))
 
 

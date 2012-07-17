@@ -41,6 +41,14 @@ cdef class FortranDataset(Dataset):
                              int* n_nz)
 
 
+cdef class CSRDataset(Dataset):
+
+    cdef int* indices
+    cdef double* data
+    cdef int* indptr
+    cdef object X
+
+
 cdef class CSCDataset(Dataset):
 
     cdef int* indices

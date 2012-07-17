@@ -124,6 +124,25 @@ cdef class FortranDataset(Dataset):
         return safe_sparse_dot(self.X, coef)
 
 
+cdef class CSRDataset(Dataset):
+
+    def __init__(self, X):
+        cdef np.ndarray[double, ndim=1, mode='c'] X_data = X.data
+        cdef np.ndarray[int, ndim=1, mode='c'] X_indices = X.indices
+        cdef np.ndarray[int, ndim=1, mode='c'] X_indptr = X.indptr
+
+        self.n_samples = X.shape[0]
+        self.n_features = X.shape[1]
+        self.data = <double*> X_data.data
+        self.indices = <int*> X_indices.data
+        self.indptr = <int*> X_indptr.data
+
+        self.X = X
+
+    def dot(self, coef):
+        return safe_sparse_dot(self.X, coef)
+
+
 cdef class CSCDataset(Dataset):
 
     def __init__(self, X):

@@ -17,6 +17,7 @@ from .random import RandomState
 
 from .dataset_fast import ContiguousDataset
 from .dataset_fast import FortranDataset
+from .dataset_fast import CSRDataset
 from .dataset_fast import CSCDataset
 from .dataset_fast import KernelDataset
 
@@ -101,6 +102,8 @@ class BaseClassifier(BaseEstimator):
         else:
             if sp.isspmatrix_csc(X):
                 return CSCDataset(X)
+            elif sp.isspmatrix_csr(X):
+                return CSRDataset(X)
             elif np.isfortran(X):
                 return FortranDataset(X)
             else:
