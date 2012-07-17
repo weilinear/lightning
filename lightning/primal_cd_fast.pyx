@@ -274,7 +274,7 @@ cdef class LossFunction:
                          double* Z):
 
         cdef int i, k, ii, step
-        cdef double scaling, delta, L, R_j, Lpp_max, Lp_max
+        cdef double scaling, delta, L, R_j, Lpp_max, dmax
         cdef double tmp, L_new, R_j_new
         cdef double L_tmp, bound, Lpp_tmp
 
@@ -286,10 +286,9 @@ cdef class LossFunction:
 
         if multiclass:
             self.derivatives_mc(j, C, n_vectors, indices, data, n_nz,
-                                y, b, g, Z, &L, &Lp_max, &Lpp_max)
+                                y, b, g, Z, &L, &Lpp_max)
         else:
             L = 0
-            Lp_max = -DBL_MAX
             Lpp_max = -DBL_MAX
             y_ptr = <double*>Y.data
             b_ptr = <double*>b.data
@@ -299,17 +298,12 @@ cdef class LossFunction:
                 self.derivatives(j, C, indices, data, n_nz, Z_ptr, y_ptr,
                                  b_ptr, &g[k], &Lpp_tmp, &L_tmp, &bound)
                 L += L_tmp
-                Lp_max = max(Lp_max, fabs(g[k]))
                 Lpp_max = max(Lpp_max, Lpp_tmp)
                 y_ptr += n_samples
                 b_ptr += n_samples
                 Z_ptr += n_samples
 
             Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
-
-        # Check optimality.
-        if Lp_max / Lpp_max < 1e-12:
-            return
 
         # Compute vector to be projected.
         for k in xrange(n_vectors):
@@ -331,10 +325,16 @@ cdef class LossFunction:
         R_j = sqrt(R_j)
 
         delta = 0
+        dmax = -DBL_MAX
         for k in xrange(n_vectors):
             # Difference between new and old solution.
             d[k] = scaling * d[k] - w[k, j]
             delta += d[k] * g[k]
+            dmax = max(dmax, fabs(d[k]))
+
+        # Check optimality.
+        if dmax < 1e-12:
+            return
 
         # Perform line search.
         step = 1
@@ -402,7 +402,6 @@ cdef class LossFunction:
                              double* g,
                              double* Z,
                              double* L,
-                             double* Lp_max,
                              double* Lpp_max):
         raise NotImplementedError()
 
@@ -572,7 +571,6 @@ cdef class SquaredHinge(LossFunction):
                              double* g,
                              double* Z,
                              double* L,
-                             double* Lp_max,
                              double* Lpp_max):
 
         cdef int ii, i, k
@@ -598,10 +596,8 @@ cdef class SquaredHinge(LossFunction):
                     g[k] += tmp
                     Lpp_max[0] += data[ii] * data[ii]
 
-        Lp_max[0] = 0
         for k in xrange(n_vectors):
             g[k] *= 2 * C
-            Lp_max[0] = max(fabs(g[k]), Lp_max[0])
 
         L[0] *= C
         Lpp_max[0] *= 2 * C
@@ -814,7 +810,6 @@ cdef class Log(LossFunction):
                              double *g,
                              double* Z,
                              double* L,
-                             double* Lp_max,
                              double* Lpp_max):
 
         cdef int ii, i, k
@@ -831,7 +826,6 @@ cdef class Log(LossFunction):
         L[0] *= C
 
         # Compute gradient and largest second derivative.
-        Lp_max[0] = -DBL_MAX
         Lpp_max[0] = -DBL_MAX
 
         for k in xrange(n_vectors):
@@ -850,7 +844,6 @@ cdef class Log(LossFunction):
                     Lpp += data[ii] * data[ii] * tmp * (1 - tmp)
 
             g[k] *= C
-            Lp_max[0] = max(fabs(g[k]), Lp_max[0])
             Lpp *= C
             Lpp_max[0] = max(Lpp, Lpp_max[0])
 
