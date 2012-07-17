@@ -27,11 +27,15 @@ from .primal_cd_fast import Log
 class BaseCD(object):
 
     def _get_loss(self):
+        params = {"max_steps" : self.max_steps,
+                  "sigma" : self.sigma,
+                  "beta" : self.beta,
+                  "verbose" : self.verbose}
         losses = {
             "squared" : Squared(verbose=self.verbose),
-            "squared_hinge" : SquaredHinge(verbose=self.verbose),
-            "modified_huber" : ModifiedHuber(verbose=self.verbose),
-            "log" : Log(verbose=self.verbose),
+            "squared_hinge" : SquaredHinge(**params),
+            "modified_huber" : ModifiedHuber(**params),
+            "log" : Log(**params),
         }
         return losses[self.loss]
 
@@ -41,6 +45,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
                  multiclass=False,
                  max_iter=50, tol=1e-3, termination="convergence",
+                 max_steps=30, sigma=0.01, beta=0.5,
                  kernel=None, gamma=0.1, coef0=1, degree=4, cache_mb=500,
                  warm_start=False, debiasing=False, Cd=1.0, warm_debiasing=False,
                  selection="permute", search_size=60,
@@ -53,6 +58,9 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         self.max_iter = max_iter
         self.tol = tol
         self.termination = termination
+        self.max_steps = max_steps
+        self.sigma = sigma
+        self.beta = beta
         self.kernel = kernel
         self.gamma = gamma
         self.coef0 = coef0

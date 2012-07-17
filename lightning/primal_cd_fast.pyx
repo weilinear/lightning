@@ -37,6 +37,8 @@ cdef extern from "float.h":
 cdef class LossFunction:
 
     cdef int max_steps
+    cdef double sigma
+    cdef double beta
     cdef int verbose
 
     # L2 regularization
@@ -53,8 +55,6 @@ cdef class LossFunction:
                        double *b,
                        double *Dp):
 
-        cdef double sigma = 0.01
-        cdef double beta = 0.5
         cdef double bound, Dpp, Dj_zero, z, d
         cdef int i, ii, step
         cdef double z_diff, z_old, Dj_z, cond
@@ -67,7 +67,7 @@ cdef class LossFunction:
         Dpp = 1 + Dpp
 
         if bound != 0:
-            bound = (2 * C * bound + 1) / 2.0 + sigma
+            bound = (2 * C * bound + 1) / 2.0 + self.sigma
 
         if fabs(Dp[0]/Dpp) <= 1e-12:
             return
@@ -100,13 +100,13 @@ cdef class LossFunction:
 
             #   0.5 * (w + z e_j)^T (w + z e_j)
             # = 0.5 * w^T w + w_j z + 0.5 z^2
-            cond = w[j] * z + (0.5 + sigma) * z * z
+            cond = w[j] * z + (0.5 + self.sigma) * z * z
             cond += Dj_z - Dj_zero
             if cond <= 0:
                 break
 
             z_old = z
-            z *= beta
+            z *= self.beta
             step += 1
 
         w[j] += z
@@ -165,9 +165,6 @@ cdef class LossFunction:
         cdef double Lj_z
         cdef int step
 
-        cdef double sigma = 0.01
-        cdef double beta = 0.5
-
         # Compute derivatives
         self.derivatives(j, C, indices, data, n_nz, col, y, b,
                          &Lp, &Lpp, &Lj_zero, &xj_sq)
@@ -216,7 +213,7 @@ cdef class LossFunction:
         while True:
             # Reversed because of the minus in b[i] = 1 - y_i w^T x_i.
             z_diff = z_old - z
-            cond = fabs(w[j] + z) - wj_abs - sigma * delta
+            cond = fabs(w[j] + z) - wj_abs - self.sigma * delta
 
             appxcond = xj_sq * z * z + Lp * z + cond
 
@@ -242,8 +239,8 @@ cdef class LossFunction:
                 break
 
             z_old = z
-            z *= beta
-            delta *= beta
+            z *= self.beta
+            delta *= self.beta
             step += 1
 
         # end for num_linesearch
@@ -281,8 +278,6 @@ cdef class LossFunction:
         cdef double tmp, L_new, R_j_new
         cdef double L_tmp, bound, Lpp_tmp
 
-        cdef double beta = 0.5
-        cdef double sigma = 0.01
         cdef int n_samples = Y.shape[0]
         cdef double* y_ptr
         cdef double* b_ptr
@@ -379,16 +374,16 @@ cdef class LossFunction:
 
             if step == 1:
                 delta += R_j_new - R_j
-                delta *= sigma
+                delta *= self.sigma
 
             # Check decrease condition
             if L_new - L + R_j_new - R_j <= delta:
                 break
 
-            delta *= beta
+            delta *= self.beta
             for k in xrange(n_vectors):
                 d_old[k] = d[k]
-                d[k] *= beta
+                d[k] *= self.beta
             step += 1
 
         # Update solution
@@ -430,6 +425,8 @@ cdef class Squared(LossFunction):
 
     def __init__(self, verbose=0):
         self.max_steps = 1
+        self.beta = 0.5
+        self.sigma = 0.01
         self.verbose = verbose
 
     cdef void derivatives(self,
@@ -487,8 +484,14 @@ cdef class Squared(LossFunction):
 
 cdef class SquaredHinge(LossFunction):
 
-    def __init__(self, int max_steps=30, verbose=0):
+    def __init__(self,
+                 int max_steps=30,
+                 double sigma=0.01,
+                 double beta=0.5,
+                 int verbose=0):
         self.max_steps = max_steps
+        self.sigma = sigma
+        self.beta = beta
         self.verbose = verbose
 
     # Binary
@@ -640,8 +643,14 @@ cdef class SquaredHinge(LossFunction):
 
 cdef class ModifiedHuber(LossFunction):
 
-    def __init__(self, int max_steps=30, verbose=0):
+    def __init__(self,
+                 int max_steps=30,
+                 double sigma=0.01,
+                 double beta=0.5,
+                 int verbose=0):
         self.max_steps = max_steps
+        self.sigma = sigma
+        self.beta = beta
         self.verbose = verbose
 
     cdef void derivatives(self,
@@ -716,8 +725,14 @@ cdef class ModifiedHuber(LossFunction):
 
 cdef class Log(LossFunction):
 
-    def __init__(self, int max_steps=30, verbose=0):
+    def __init__(self,
+                 int max_steps=30,
+                 double sigma=0.01,
+                 double beta=0.5,
+                 int verbose=0):
         self.max_steps = max_steps
+        self.sigma = sigma
+        self.beta = beta
         self.verbose = verbose
 
     # Binary
