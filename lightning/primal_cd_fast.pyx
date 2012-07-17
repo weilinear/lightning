@@ -37,6 +37,7 @@ cdef extern from "float.h":
 cdef class LossFunction:
 
     cdef int max_steps
+    cdef int verbose
 
     # L2 regularization
 
@@ -93,6 +94,8 @@ cdef class LossFunction:
                         col, y, b, &Dj_z)
 
             if step == self.max_steps:
+                if self.verbose >= 2:
+                    print "Max steps reached during line search..."
                 break
 
             #   0.5 * (w + z e_j)^T (w + z e_j)
@@ -229,6 +232,8 @@ cdef class LossFunction:
             self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
 
             if step == self.max_steps:
+                if self.verbose >= 2:
+                    print "Max steps reached during line search..."
                 break
 
             # Check stopping condition.
@@ -360,6 +365,8 @@ cdef class LossFunction:
                     Z_ptr += n_samples
 
             if step == self.max_steps:
+                if self.verbose >= 2:
+                    print "Max steps reached during line search..."
                 break
 
             # Compute regularization term.
@@ -421,8 +428,9 @@ cdef class LossFunction:
 
 cdef class Squared(LossFunction):
 
-    def __init__(self):
+    def __init__(self, verbose=0):
         self.max_steps = 1
+        self.verbose = verbose
 
     cdef void derivatives(self,
                           int j,
@@ -479,8 +487,9 @@ cdef class Squared(LossFunction):
 
 cdef class SquaredHinge(LossFunction):
 
-    def __init__(self, int max_steps=30):
+    def __init__(self, int max_steps=30, verbose=0):
         self.max_steps = max_steps
+        self.verbose = verbose
 
     # Binary
 
@@ -631,8 +640,9 @@ cdef class SquaredHinge(LossFunction):
 
 cdef class ModifiedHuber(LossFunction):
 
-    def __init__(self, int max_steps=30):
+    def __init__(self, int max_steps=30, verbose=0):
         self.max_steps = max_steps
+        self.verbose = verbose
 
     cdef void derivatives(self,
                           int j,
@@ -706,8 +716,9 @@ cdef class ModifiedHuber(LossFunction):
 
 cdef class Log(LossFunction):
 
-    def __init__(self, int max_steps=30):
+    def __init__(self, int max_steps=30, verbose=0):
         self.max_steps = max_steps
+        self.verbose = verbose
 
     # Binary
 

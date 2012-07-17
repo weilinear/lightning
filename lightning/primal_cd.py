@@ -28,10 +28,10 @@ class BaseCD(object):
 
     def _get_loss(self):
         losses = {
-            "squared" : Squared(),
-            "squared_hinge" : SquaredHinge(),
-            "modified_huber" : ModifiedHuber(),
-            "log" : Log(),
+            "squared" : Squared(verbose=self.verbose),
+            "squared_hinge" : SquaredHinge(verbose=self.verbose),
+            "modified_huber" : ModifiedHuber(verbose=self.verbose),
+            "log" : Log(verbose=self.verbose),
         }
         return losses[self.loss]
 
