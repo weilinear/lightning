@@ -835,13 +835,16 @@ cdef class Log(LossFunction):
             for ii in xrange(n_nz):
                 i = indices[ii]
 
-                if y[i] == k:
+                if Z[i] == 0:
                     continue
 
-                if Z[i] > 0:
-                    tmp = b[k, i] / Z[i]
-                    g[k] += tmp * data[ii]
-                    Lpp += data[ii] * data[ii] * tmp * (1 - tmp)
+                tmp = b[k, i] / Z[i]
+                Lpp += data[ii] * data[ii] * tmp * (1 - tmp)
+
+                if k == y[i]:
+                    tmp -= 1
+
+                g[k] += tmp * data[ii]
 
             g[k] *= C
             Lpp *= C
