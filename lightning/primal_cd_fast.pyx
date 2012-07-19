@@ -583,6 +583,8 @@ cdef class SquaredHinge(LossFunction):
         for k in xrange(n_vectors):
             g[k] = 0
 
+        for k in xrange(n_vectors):
+
             for ii in xrange(n_nz):
                 i = indices[ii]
 
