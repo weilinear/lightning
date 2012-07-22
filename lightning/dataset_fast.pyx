@@ -61,6 +61,27 @@ cdef class Dataset:
 
         return indices_, data_, n_nz
 
+    cdef void get_row_ptr(self,
+                          int i,
+                          int** indices,
+                          double** data,
+                          int* n_nz):
+        raise NotImplementedError()
+
+    cpdef get_row(self, int i):
+        cdef double* data
+        cdef int* indices
+        cdef int n_nz
+        cdef np.npy_intp shape[1]
+
+        self.get_row_ptr(i, &indices, &data, &n_nz)
+
+        shape[0] = <np.npy_intp> self.n_features
+        indices_ = np.PyArray_SimpleNewFromData(1, shape, np.NPY_INT, indices)
+        data_ = np.PyArray_SimpleNewFromData(1, shape, np.NPY_DOUBLE, data)
+
+        return indices_, data_, n_nz
+
     cpdef int get_n_samples(self):
         return self.n_samples
 
@@ -81,13 +102,22 @@ cdef class ContiguousDataset(Dataset):
 
     def __cinit__(self, np.ndarray[double, ndim=2, mode='c'] X):
         cdef int i
-        cdef int n_samples = X.shape[0]
-        self.indices = <int*> stdlib.malloc(sizeof(int) * n_samples)
-        for i in xrange(n_samples):
-            self.indices[i] = i
+        cdef int n_features = X.shape[1]
+        self.indices = <int*> stdlib.malloc(sizeof(int) * n_features)
+        for j in xrange(n_features):
+            self.indices[j] = j
 
     def __dealloc__(self):
         stdlib.free(self.indices)
+
+    cdef void get_row_ptr(self,
+                          int i,
+                          int** indices,
+                          double** data,
+                          int* n_nz):
+        indices[0] = self.indices
+        data[0] = self.data + i * self.n_features
+        n_nz[0] = self.n_features
 
     def dot(self, coef):
         return safe_sparse_dot(self.X, coef)
@@ -138,6 +168,15 @@ cdef class CSRDataset(Dataset):
         self.indptr = <int*> X_indptr.data
 
         self.X = X
+
+    cdef void get_row_ptr(self,
+                          int i,
+                          int** indices,
+                          double** data,
+                          int* n_nz):
+        indices[0] = self.indices + self.indptr[i]
+        data[0] = self.data + self.indptr[i]
+        n_nz[0] = self.indptr[i + 1] - self.indptr[i]
 
     def dot(self, coef):
         return safe_sparse_dot(self.X, coef)
