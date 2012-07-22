@@ -21,6 +21,8 @@ X, _ = make_classification(n_samples=20, n_features=100,
 X2, _ = make_classification(n_samples=10, n_features=100,
                             n_informative=5, n_classes=2, random_state=0)
 
+capacity = 4 * 20 * 8 # 4 columns of 20 doubles
+
 X_csr = sp.csr_matrix(X)
 X_csc = sp.csc_matrix(X)
 
@@ -78,3 +80,146 @@ def test_kernel_dot():
     kd = KernelDataset(X, X2, "rbf", gamma=0.1)
     assert_array_almost_equal(kd.dot(coef),
                               np.dot(K, coef))
+
+
+def test_kernel_cache_add_remove():
+    kds = KernelDataset(X, X, "rbf", gamma=0.1,
+                        capacity=capacity, mb=0, verbose=0)
+
+    for i in xrange(3):
+        kds.add_sv(i)
+
+    assert_equal(kds.n_sv(), 3)
+
+    kds.remove_sv(1)
+    assert_equal(kds.n_sv(), 2)
+
+
+def test_kernel_cache_column():
+    K = pairwise_kernels(X, metric="rbf", gamma=0.1)
+    kds = KernelDataset(X, X, "rbf", gamma=0.1,
+                        capacity=capacity, mb=0, verbose=0)
+
+    # Compute a first column.
+    data = kds.get_column(12)[1]
+    assert_array_almost_equal(K[:, 12], data)
+    assert_equal(kds.get_size(), 160)
+
+    # Check that the works.
+    data = kds.get_column(12)[1]
+    assert_array_almost_equal(K[:, 12], data)
+    assert_equal(kds.get_size(), 160)
+
+    # Compute more columns.
+    data = kds.get_column(13)[1]
+    assert_array_almost_equal(K[:, 13], data)
+    assert_equal(kds.get_size(), 320)
+
+    data = kds.get_column(14)[1]
+    assert_array_almost_equal(K[:, 14], data)
+    assert_equal(kds.get_size(), 480)
+
+    data = kds.get_column(15)[1]
+    assert_array_almost_equal(K[:, 15], data)
+    assert_equal(kds.get_size(), 640)
+
+    # Maximum size reached.
+    data = kds.get_column(16)[1]
+    assert_array_almost_equal(K[:, 16], data)
+    assert_equal(kds.get_size(), 480)
+
+    # Check that cache works.
+    data = kds.get_column(16)[1]
+    assert_array_almost_equal(K[:, 16], data)
+    assert_equal(kds.get_size(), 480)
+
+
+def test_kernel_cache_column_sv():
+    K = pairwise_kernels(X, metric="rbf", gamma=0.1)
+    kds = KernelDataset(X, X, "rbf", gamma=0.1,
+                        capacity=capacity, mb=0, verbose=0)
+
+    size = 0
+
+    # Add 3 SVs.
+    kds.add_sv(6)
+    kds.add_sv(12)
+    kds.add_sv(3)
+    # That's a limitation of the current implementation:
+    # it allocates a full column.
+    size += 20 * 8
+
+    # Compute values.
+    for i in xrange(2): # Do it twice to check that the cache works.
+        data = kds.get_column_sv(7)
+        assert_almost_equal(K[6, 7], data[6])
+        assert_almost_equal(K[12, 7], data[12])
+        assert_almost_equal(K[3, 7], data[3])
+        assert_equal(size, kds.get_size())
+
+    # Add one more SV.
+    kds.add_sv(17)
+
+    # Compute values.
+    for i in xrange(2):
+        data = kds.get_column_sv(7)
+        assert_almost_equal(K[6, 7], data[6])
+        assert_almost_equal(K[12, 7], data[12])
+        assert_almost_equal(K[3, 7], data[3])
+        assert_almost_equal(K[17, 7], data[17])
+        assert_equal(size, kds.get_size())
+
+    # Compute the entire same column.
+    data = kds.get_column(7)[1]
+    assert_array_almost_equal(K[:, 7], data)
+    assert_equal(size, kds.get_size())
+
+    # Compute an entire new column.
+    data = kds.get_column(8)[1]
+    size += 20 * 8
+    assert_array_almost_equal(K[:, 8], data)
+    assert_equal(size, kds.get_size())
+
+    # Retrieve the SV only.
+    data = kds.get_column_sv(8)
+    assert_almost_equal(K[6, 8], data[6])
+    assert_almost_equal(K[12, 8], data[12])
+    assert_almost_equal(K[3, 8], data[3])
+    assert_almost_equal(K[17, 8], data[17])
+    assert_equal(size, kds.get_size())
+
+    # Remove SV.
+    kds.remove_sv(12)
+    data = kds.get_column_sv(8)
+    assert_almost_equal(K[6, 8], data[6])
+    assert_almost_equal(K[12, 8], data[12])
+    assert_almost_equal(K[3, 8], data[3])
+    assert_almost_equal(K[17, 8], data[17])
+    assert_equal(size, kds.get_size())
+
+    for i in (12, 6, 3):
+        kds.remove_sv(i)
+
+    assert_equal(kds.n_sv(), 1)
+
+    # Add back some new SV.
+    kds.add_sv(15)
+    assert_equal(kds.n_sv(), 2)
+
+    data = kds.get_column_sv(8)
+    assert_almost_equal(0, data[6])
+    assert_almost_equal(0, data[12])
+    assert_almost_equal(0, data[3])
+    assert_almost_equal(K[15, 8], data[15])
+    assert_almost_equal(K[17, 8], data[17])
+    assert_equal(size, kds.get_size())
+
+    # Remove non-existing column.
+    kds.remove_column(19)
+    assert_equal(size, kds.get_size())
+
+    # Remove existing column.
+    kds.remove_column(8)
+    size -= 20 * 8
+    assert_equal(size, kds.get_size())
+

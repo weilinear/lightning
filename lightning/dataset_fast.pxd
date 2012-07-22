@@ -85,11 +85,14 @@ cdef class KernelDataset(Dataset):
     cdef int verbose
     cdef long size
 
+    # Support set
+    cdef list[int]* support_set
+    cdef list[int].iterator* support_it
+    cdef int* support_vector
+
     # Methods
-    cdef void _linear_kernel(self, int j, double *out)
-    cdef void _poly_kernel(self, int j, double *out)
-    cdef void _rbf_kernel(self, int j, double *out)
-    cdef void _kernel(self, int j, double *out)
+    cdef void _kernel_column(self, int j, double *out)
+    cdef void _kernel_column_sv(self, int j, double *out)
 
     cdef void _create_column(self, int i)
     cdef void _clear_columns(self, int n)
@@ -99,3 +102,12 @@ cdef class KernelDataset(Dataset):
                              int** indices,
                              double** data,
                              int* n_nz)
+    cdef double* get_column_sv_ptr(self,
+                                   int j)
+    cpdef get_column_sv(self, int j)
+
+    cpdef remove_column(self, int i)
+    cpdef add_sv(self, int i)
+    cpdef remove_sv(self, int i)
+    cpdef int n_sv(self)
+    cpdef get_size(self)

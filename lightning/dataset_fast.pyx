@@ -181,6 +181,58 @@ KERNELS = {"linear" : LINEAR_KERNEL,
            "rbf" : RBF_KERNEL}
 
 
+cdef double _linear_kernel(double* data_X,
+                           double* data_Y,
+                           int n_features):
+    cdef int k
+    cdef double dot = 0
+
+    for k in xrange(n_features):
+        dot += data_X[k] * data_Y[k]
+
+    return dot
+
+
+cdef double _poly_kernel(double* data_X,
+                         double* data_Y,
+                         int n_features,
+                         double gamma,
+                         double coef0,
+                         int degree):
+    cdef double dot = _linear_kernel(data_X, data_Y, n_features)
+    return powi(coef0 + dot * gamma, degree)
+
+
+cdef double _rbf_kernel(double* data_X,
+                        double* data_Y,
+                        int n_features,
+                        double gamma):
+    cdef double diff, value = 0
+
+    for k in xrange(n_features):
+        diff = data_X[k] - data_Y[k]
+        value += diff * diff
+
+    return exp(-gamma * value)
+
+
+cdef double _kernel(double* data_X,
+                    double* data_Y,
+                    int n_features,
+                    double gamma,
+                    double coef0,
+                    int degree,
+                    int kernel):
+    cdef ret = 0
+    if kernel == LINEAR_KERNEL:
+        ret = _linear_kernel(data_X, data_Y, n_features)
+    elif kernel == POLY_KERNEL:
+        ret = _poly_kernel(data_X, data_Y, n_features, gamma, coef0, degree)
+    elif kernel == RBF_KERNEL:
+        ret = _rbf_kernel(data_X, data_Y, n_features, gamma)
+    return ret
+
+
 cdef class KernelDataset(Dataset):
 
     def __init__(self,
@@ -233,11 +285,18 @@ cdef class KernelDataset(Dataset):
         for i in xrange(n_samples):
             self.indices[i] = i
 
+        # Allocate support set.
+        self.support_set = new list[int]()
+        self.support_vector = <int*> stdlib.malloc(sizeof(int) * n_samples)
+        self.support_it = <list[int].iterator*> \
+            stdlib.malloc(sizeof(list[int].iterator) * n_samples)
+
         # Allocate containers for cache.
         self.n_computed = <int*> stdlib.malloc(sizeof(int) * n_samples)
         self.columns = new map[int, double*]()
 
         for i in xrange(n_samples):
+            self.support_vector[i] = -1
             self.n_computed[i] = 0
 
         self.cache = <double*> stdlib.malloc(sizeof(double) * n_samples)
@@ -245,6 +304,11 @@ cdef class KernelDataset(Dataset):
     def __dealloc__(self):
         # De-allocate indices.
         stdlib.free(self.indices)
+
+        # De-allocate support set.
+        del self.support_set
+        stdlib.free(self.support_vector)
+        stdlib.free(self.support_it)
 
         # De-allocate containers for cache.
         self._clear_columns(self.n_samples)
@@ -254,9 +318,7 @@ cdef class KernelDataset(Dataset):
 
         stdlib.free(self.cache)
 
-    cdef void _linear_kernel(self, int j, double *out):
-        cdef double dot = 0
-        cdef int i, k
+    cdef void _kernel_column(self, int j, double *out):
         cdef double* data_X
         cdef double* data_Y
 
@@ -264,62 +326,28 @@ cdef class KernelDataset(Dataset):
         data_Y = self.data_Y + j * self.n_features_Y
 
         for i in xrange(self.n_samples):
-            dot = 0
-
-            for k in xrange(self.n_features_Y):
-                dot += data_X[k] * data_Y[k]
-
-            out[i] = dot
-
+            out[i] = _kernel(data_X, data_Y, self.n_features_Y,
+                             self.gamma, self.coef0, self.degree, self.kernel)
             data_X += self.n_features_Y
 
-    cdef void _poly_kernel(self, int j, double *out):
-        cdef double dot = 0
-        cdef int i, k
+    cdef void _kernel_column_sv(self, int j, double *out):
         cdef double* data_X
         cdef double* data_Y
+        cdef list[int].iterator it
+        cdef int s
 
-        data_X = self.data
         data_Y = self.data_Y + j * self.n_features_Y
 
-        for i in xrange(self.n_samples):
-            dot = 0
+        it = self.support_set.begin()
+        while it != self.support_set.end():
+            s = deref(it)
+            data_X = self.data + s * self.n_features_Y
 
-            for k in xrange(self.n_features_Y):
-                dot += data_X[k] * data_Y[k]
-
-            out[i] = powi(self.coef0 + dot * self.gamma, self.degree)
-
-            data_X += self.n_features_Y
-
-    cdef void _rbf_kernel(self, int j, double *out):
-        cdef double value
-        cdef double diff
-        cdef int i, k
-        cdef double* data_X
-        cdef double* data_Y
-
-        data_X = self.data
-        data_Y = self.data_Y + j * self.n_features_Y
-
-        for i in xrange(self.n_samples):
-            value = 0
-
-            for k in xrange(self.n_features_Y):
-                diff = data_X[k] - data_Y[k]
-                value += diff * diff
-
-            out[i] = exp(-self.gamma * value)
-
-            data_X += self.n_features_Y
-
-    cdef void _kernel(self, int j, double *out):
-        if self.kernel == LINEAR_KERNEL:
-            self._linear_kernel(j, out)
-        elif self.kernel == POLY_KERNEL:
-            self._poly_kernel(j, out)
-        elif self.kernel == RBF_KERNEL:
-            self._rbf_kernel(j, out)
+            if out[s] == 0:
+                out[s] = _kernel(data_X, data_Y, self.n_features_Y,
+                                 self.gamma, self.coef0, self.degree,
+                                 self.kernel)
+            inc(it)
 
     cdef void _create_column(self, int i):
         cdef int n_computed = self.n_computed[i]
@@ -360,7 +388,7 @@ cdef class KernelDataset(Dataset):
         cdef int i = 0
 
         if self.capacity == 0:
-            self._kernel(j, self.cache)
+            self._kernel_column(j, self.cache)
             return self.cache
 
         cdef int n_computed = self.n_computed[j]
@@ -372,17 +400,9 @@ cdef class KernelDataset(Dataset):
         if n_computed == -1:
             # Full column is already computed.
             return cache
-        #elif n_computed > 0:
-            ## Some elements are already computed.
-            #for i in xrange(self.n_samples):
-                #if cache[i] == 0:
-                    #out[i] = self.kernel.compute(X, i, Y, j)
-                    #cache[i] = out[i]
-                #else:
-                    #out[i] = cache[i]
         else:
             # All elements must be computed.
-            self._kernel(j, cache)
+            self._kernel_column(j, cache)
 
         self.n_computed[j] = -1
 
@@ -398,6 +418,90 @@ cdef class KernelDataset(Dataset):
         data[0] = self._get_column(j)
         n_nz[0] = self.n_samples
 
+    cdef double* get_column_sv_ptr(self, int j):
+
+        cdef int s
+        cdef int n_computed = self.n_computed[j]
+        cdef int ssize = self.support_set.size()
+
+        if ssize == 0:
+            return self.cache
+
+        self._create_column(j)
+        cdef double* cache = &(self.columns[0][j][0])
+
+        if n_computed == -1:
+            # Full column is already computed.
+            return cache
+
+        self._kernel_column_sv(j, cache)
+        self.n_computed[j] = ssize
+
+        return cache
+
+    cpdef get_column_sv(self, int j):
+        cdef double* data
+        cdef np.npy_intp shape[1]
+        shape[0] = <np.npy_intp> self.n_samples
+
+        data = self.get_column_sv_ptr(j)
+
+        return np.PyArray_SimpleNewFromData(1, shape, np.NPY_DOUBLE, data)
+
+    cpdef remove_column(self, int i):
+        if self.verbose >= 2:
+            print "Remove column SV", i
+
+        cdef map[int, double*].iterator it
+        cdef int col_size = self.n_samples * sizeof(double)
+
+        it = self.columns.find(i)
+
+        if it != self.columns.end():
+            self.n_computed[deref(it).first] = 0
+            stdlib.free(deref(it).second)
+            self.columns.erase(it)
+            self.size -= col_size
+
+    cpdef add_sv(self, int i):
+        if self.verbose >= 2:
+            print "Add SV", i
+
+        cdef list[int].iterator it
+        if self.support_vector[i] == -1:
+            self.support_set.push_back(i)
+            it = self.support_set.end()
+            dec(it)
+            self.support_it[i] = it
+            self.support_vector[i] = self.support_set.size() - 1
+
+    cpdef remove_sv(self, int i):
+        if self.verbose >= 2:
+            print "Remove SV", i
+
+        cdef list[int].iterator it
+        cdef map[int, double*].iterator it2
+        cdef double* cache
+        cdef int j
+
+        if self.support_vector[i] >= 0:
+            it = self.support_it[i]
+            self.support_set.erase(it)
+            k = self.support_vector[i]
+            self.support_vector[i] = -1
+
+            it2 = self.columns.begin()
+            while it2 != self.columns.end():
+                j = deref(it2).first
+                self.columns[0][j][i] = 0
+                inc(it2)
+
+    cpdef int n_sv(self):
+        return self.support_set.size()
+
+    cpdef get_size(self):
+        return self.size
+
     def dot(self, coef):
         cdef int n_features = coef.shape[0]
         cdef int n_vectors = coef.shape[1]
@@ -411,7 +515,7 @@ cdef class KernelDataset(Dataset):
         cdef int i, j, k
 
         for j in xrange(n_features):
-            self._kernel(j, self.cache)
+            self._kernel_column(j, self.cache)
 
             for i in xrange(self.n_samples):
                 for k in xrange(n_vectors):
