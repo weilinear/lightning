@@ -102,9 +102,11 @@ cdef class KernelDataset(Dataset):
                              int** indices,
                              double** data,
                              int* n_nz)
-    cdef double* get_column_sv_ptr(self,
-                                   int j)
+    cdef double* get_column_sv_ptr(self, int j)
     cpdef get_column_sv(self, int j)
+
+    cdef void get_diag_out(self, double*out)
+    cpdef get_diag(self)
 
     cpdef remove_column(self, int i)
     cpdef add_sv(self, int i)

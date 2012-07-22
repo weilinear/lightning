@@ -448,6 +448,25 @@ cdef class KernelDataset(Dataset):
 
         return np.PyArray_SimpleNewFromData(1, shape, np.NPY_DOUBLE, data)
 
+    cdef void get_diag_out(self, double* out):
+        cdef int i
+        cdef double* data_X = self.data
+
+        for i in xrange(self.n_samples):
+            if self.kernel == RBF_KERNEL:
+                out[i] = 1
+            else:
+                out[i] = _kernel(data_X, data_X, self.n_features_Y,
+                                 self.gamma, self.coef0, self.degree,
+                                 self.kernel)
+            data_X += self.n_features_Y
+
+    cpdef get_diag(self):
+        cdef np.ndarray[double, ndim=1, mode='c'] out
+        out = np.zeros(self.n_samples, dtype=np.float64)
+        self.get_diag_out(<double*>out.data)
+        return out
+
     cpdef remove_column(self, int i):
         if self.verbose >= 2:
             print "Remove column SV", i

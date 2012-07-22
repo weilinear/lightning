@@ -223,3 +223,19 @@ def test_kernel_cache_column_sv():
     size -= 20 * 8
     assert_equal(size, kds.get_size())
 
+
+def test_kernel_diag_linear():
+    K = pairwise_kernels(X, metric="linear")
+    kds = KernelDataset(X, X, "linear")
+    out = kds.get_diag()
+    good = K.flat[::K.shape[0] + 1]
+    assert_array_almost_equal(out, good)
+
+
+def test_kernel_diag_rbf():
+    K = pairwise_kernels(X, metric="rbf", gamma=0.1)
+    kds = KernelDataset(X, X, "rbf", gamma=0.1)
+    out = kds.get_diag()
+    good = K.flat[::K.shape[0] + 1]
+    assert_array_almost_equal(out, good)
+
