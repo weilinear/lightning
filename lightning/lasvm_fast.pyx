@@ -26,10 +26,10 @@ cdef struct Intpair:
     int right
 
 
-cdef Intpair _argmin_argmax(np.ndarray[double, ndim=1] y,
-                            np.ndarray[double, ndim=1, mode='c'] g,
+cdef Intpair _argmin_argmax(double* y,
+                            double* g,
                             list[int]* support_set,
-                            np.ndarray[double, ndim=1, mode='c'] alpha,
+                            double* alpha,
                             double C):
 
     cdef int s, sel_min, sel_max
@@ -65,9 +65,9 @@ cdef Intpair _argmin_argmax(np.ndarray[double, ndim=1] y,
 
 
 cdef void _update(KernelDataset kds,
-                  np.ndarray[double, ndim=1] y,
-                  np.ndarray[double, ndim=1, mode='c'] g,
-                  np.ndarray[double, ndim=1, mode='c'] alpha,
+                  double *y,
+                  double *g,
+                  double *alpha,
                   int i,
                   int j,
                   double Aj,
@@ -99,9 +99,9 @@ cdef void _update(KernelDataset kds,
 
 cdef void _process(int k,
                    KernelDataset kds,
-                   np.ndarray[double, ndim=1] y,
-                   np.ndarray[double, ndim=1, mode='c'] alpha,
-                   np.ndarray[double, ndim=1, mode='c'] g,
+                   double* y,
+                   double* alpha,
+                   double* g,
                    double C,
                    double tau,
                    double* col,
@@ -150,11 +150,11 @@ cdef void _process(int k,
 
 
 cdef void _reprocess(KernelDataset kds,
-                     np.ndarray[double, ndim=1] y,
-                     np.ndarray[double, ndim=1, mode='c'] alpha,
-                     np.ndarray[double, ndim=1, mode='c'] g,
-                     np.ndarray[double, ndim=1, mode='c'] b,
-                     np.ndarray[double, ndim=1, mode='c'] delta,
+                     double* y,
+                     double* alpha,
+                     double* g,
+                     double* b,
+                     double* delta,
                      double C,
                      double tau,
                      double* col,
@@ -208,9 +208,9 @@ cdef void _reprocess(KernelDataset kds,
 
 cdef void _boostrap(index,
                     KernelDataset kds,
-                    np.ndarray[double, ndim=1] y,
-                    np.ndarray[double, ndim=1, mode='c'] alpha,
-                    np.ndarray[double, ndim=1, mode='c'] g,
+                    double* y,
+                    double* alpha,
+                    double* g,
                     double* col,
                     rs):
     cdef int* support_vectors = kds.support_vector
@@ -250,9 +250,9 @@ cdef void _boostrap(index,
 
 cdef void _boostrap_warm_start(index,
                                KernelDataset kds,
-                               np.ndarray[double, ndim=1]y,
-                               np.ndarray[double, ndim=1, mode='c'] alpha,
-                               np.ndarray[double, ndim=1, mode='c'] g,
+                               double* y,
+                               double* alpha,
+                               double* g,
                                double* col):
     cdef int* support_vectors = kds.support_vector
     cdef list[int]* support_set = kds.support_set
@@ -322,10 +322,21 @@ def _lasvm(self,
 
     cdef int permute = selection == "permute"
     cdef int select_method = get_select_method(selection)
+
+    # Data pointers
+    cdef double* y_ptr = <double*>y.data
+    cdef double* alpha_ptr = <double*>alpha.data
+    cdef double* g_ptr = <double*>g.data
+    cdef double* b_ptr = <double*>b.data
+    cdef double* delta_ptr = <double*>delta.data
+    cdef double* col_ptr = <double*>col.data
+    cdef double* col2_ptr = <double*>col2.data
+
+    # Initialization
     if warm_start:
-        _boostrap_warm_start(A, kds, y, alpha, g, <double*>col.data)
+        _boostrap_warm_start(A, kds, y_ptr, alpha_ptr, g_ptr, col_ptr)
     else:
-        _boostrap(A, kds, y, alpha, g, <double*>col.data, rs)
+        _boostrap(A, kds, y_ptr, alpha_ptr, g_ptr, col_ptr, rs)
 
     for it in xrange(max_iter):
 
@@ -341,12 +352,11 @@ def _lasvm(self,
                               alpha, b[0], kds, y, 1, rs)
 
             # Attempt to add it.
-            _process(s, kds, y, alpha, g, C, tau,
-                     <double*>col.data, <double*>col2.data)
+            _process(s, kds, y_ptr, alpha_ptr, g_ptr, C, tau, col_ptr, col2_ptr)
 
             # Remove blatant non support vectors.
-            _reprocess(kds, y, alpha, g, b, delta, C, tau,
-                     <double*>col.data, <double*>col2.data)
+            _reprocess(kds, y_ptr, alpha_ptr, g_ptr, b_ptr, delta_ptr, C, tau,
+                       col_ptr, col2_ptr)
 
             # Exit if necessary.
             if check_n_sv and kds.n_sv() >= n_components:
@@ -371,8 +381,8 @@ def _lasvm(self,
 
     if finish_step:
         while delta[0] > tau:
-            _reprocess(kds, y, alpha, g, b, delta, C, tau,
-                     <double*>col.data, <double*>col2.data)
+            _reprocess(kds, y_ptr, alpha_ptr, g_ptr, b_ptr, delta_ptr, C, tau,
+                       col_ptr, col2_ptr)
 
     if verbose >= 1:
         print
