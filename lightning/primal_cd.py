@@ -12,7 +12,7 @@ from sklearn.utils import safe_mask
 
 from .base import BaseClassifier
 
-from .kernel_fast import get_kernel, KernelCache
+from .dataset_fast import KernelDataset
 from .primal_cd_fast import _primal_cd_l1l2r
 from .primal_cd_fast import _primal_cd_l2r
 from .primal_cd_fast import _primal_cd_l1r
@@ -191,9 +191,9 @@ def C_lower_bound(X, y, kernel=None, search_size=None, random_state=None,
     if kernel is None:
         den = np.max(np.abs(np.dot(Y.T, X)))
     else:
-        kernel = get_kernel(kernel, **kernel_params)
         random_state = check_random_state(random_state)
-        den = _C_lower_bound_kernel(X, Y, kernel, search_size, random_state)
+        kds = KernelDataset(X, X, kernel=kernel, **kernel_params)
+        den = _C_lower_bound_kernel(kds, Y, search_size, random_state)
 
     if den == 0.0:
         raise ValueError('Ill-posed')

@@ -18,12 +18,11 @@ from libcpp.vector cimport vector
 import numpy as np
 cimport numpy as np
 
-from lightning.kernel_fast cimport KernelCache
-from lightning.kernel_fast cimport Kernel
 from lightning.select_fast cimport get_select_method
 from lightning.select_fast cimport select_sv_precomputed
 from lightning.random.random_fast cimport RandomState
 from lightning.dataset_fast cimport Dataset
+from lightning.dataset_fast cimport KernelDataset
 
 cdef extern from "math.h":
    double fabs(double)
@@ -1184,25 +1183,24 @@ def _primal_cd_l2r(self,
     return w
 
 
-cpdef _C_lower_bound_kernel(np.ndarray[double, ndim=2, mode='c'] X,
+cpdef _C_lower_bound_kernel(KernelDataset kds,
                             np.ndarray[double, ndim=2, mode='c'] Y,
-                            Kernel kernel,
                             search_size=None,
                             random_state=None):
 
-    cdef int n_samples = X.shape[0]
+    cdef int n_samples = kds.get_n_samples()
     cdef int n = n_samples
 
     cdef int i, j, k, l
     cdef int n_vectors = Y.shape[1]
 
     cdef double val, max_ = -DBL_MAX
+    cdef int* indices
+    cdef double* data
+    cdef int n_nz
 
     cdef np.ndarray[int, ndim=1, mode='c'] ind
-    ind = np.arange(n, dtype=np.int32)
-
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    col = np.zeros(n, dtype=np.float64)
+    ind = np.arange(n_samples, dtype=np.int32)
 
     if search_size is not None:
         n = search_size
@@ -1211,13 +1209,12 @@ cpdef _C_lower_bound_kernel(np.ndarray[double, ndim=2, mode='c'] X,
     for j in xrange(n):
         k = ind[j]
 
-        for i in xrange(n_samples):
-            col[i] = kernel.compute(X, i, X, k)
+        kds.get_column_ptr(k, &indices, &data, &n_nz)
 
         for l in xrange(n_vectors):
             val = 0
             for i in xrange(n_samples):
-                val += Y[i, l] * col[i]
+                val += Y[i, l] * data[i]
             max_ = max(max_, fabs(val))
 
     return max_
