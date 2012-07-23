@@ -18,6 +18,7 @@ from lightning.dataset_fast cimport KernelDataset
 from lightning.select_fast cimport get_select_method, select_sv
 from lightning.random.random_fast cimport RandomState
 
+
 cdef extern from "float.h":
    double DBL_MAX
 
@@ -293,33 +294,30 @@ def _lasvm(self,
 
     cdef Py_ssize_t n_samples = kds.get_n_samples()
 
+    # Active set.
     cdef np.ndarray[int, ndim=1, mode='c'] A
     A = np.arange(n_samples, dtype=np.int32)
 
-    cdef list[int] support_set
-
+    # Initialization
     cdef np.ndarray[double, ndim=1, mode='c'] g
-    g = y.copy()
-
     cdef np.ndarray[double, ndim=1, mode='c'] b
-    b = np.zeros(1, dtype=np.float64)
-
     cdef np.ndarray[double, ndim=1, mode='c'] delta
-    delta = np.zeros(1, dtype=np.float64)
-
     cdef np.ndarray[double, ndim=1, mode='c'] col
-    col = np.zeros(n_samples, dtype=np.float64)
-
     cdef np.ndarray[double, ndim=1, mode='c'] col2
-    col2 = np.zeros(n_samples, dtype=np.float64)
 
-    cdef int check_n_sv = termination == "n_components"
-    cdef int has_callback = callback is not None
+    g = y.copy()
+    b = np.zeros(1, dtype=np.float64)
+    delta = np.zeros(1, dtype=np.float64)
+    col = np.zeros(n_samples, dtype=np.float64)
+    col2 = np.zeros(n_samples, dtype=np.float64)
 
     cdef int it, i, j, s, k
     cdef int n_pos, n_neg
     cdef int stop = 0
+    cdef list[int] support_set
 
+    cdef int check_n_sv = termination == "n_components"
+    cdef int has_callback = callback is not None
     cdef int permute = selection == "permute"
     cdef int select_method = get_select_method(selection)
 
@@ -332,7 +330,7 @@ def _lasvm(self,
     cdef double* col_ptr = <double*>col.data
     cdef double* col2_ptr = <double*>col2.data
 
-    # Initialization
+    # Boostrap model.
     if warm_start:
         _boostrap_warm_start(A, kds, y_ptr, alpha_ptr, g_ptr, col_ptr)
     else:
@@ -370,6 +368,7 @@ def _lasvm(self,
                     stop = 1
                     break
 
+            # Output progress.
             if verbose >= 1 and i % 100 == 0:
                 sys.stdout.write(".")
                 sys.stdout.flush()

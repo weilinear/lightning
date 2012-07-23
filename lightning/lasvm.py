@@ -3,10 +3,8 @@
 
 import numpy as np
 
-from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.base import ClassifierMixin
 from sklearn.preprocessing import LabelBinarizer
-from sklearn.utils import check_random_state
-from sklearn.utils import safe_mask
 from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
