@@ -62,7 +62,8 @@ class BaseClassifier(BaseEstimator):
         return y, n_classes, n_vectors
 
     def n_nonzero(self):
-        if self.support_indices_.shape[0] == 0:
+        if hasattr(self, "support_indices_") and \
+           self.support_indices_.shape[0] == 0:
             return 0
         elif hasattr(self, "dual_coef_"):
             return np.sum(np.sum(self.dual_coef_ != 0, axis=0, dtype=bool))
