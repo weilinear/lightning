@@ -8,7 +8,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import check_random_state
 from sklearn.utils import safe_mask
-from sklearn.metrics.pairwise import pairwise_kernels
+from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
 from .dual_cd_fast import _dual_cd
@@ -93,8 +93,7 @@ class DualSVC(BaseClassifier, ClassifierMixin):
 
     def decision_function(self, X):
         if self.kernel == "linear":
-            ds = self._get_dataset(X, kernel=False)
-            return ds.dot(self.coef_.T) + self.intercept_
+            return safe_sparse_dot(X, self.coef_.T) + self.intercept_
         else:
             ds = self._get_dataset(X, self.support_vectors_)
             return ds.dot(self.dual_coef_.T) + self.intercept_
