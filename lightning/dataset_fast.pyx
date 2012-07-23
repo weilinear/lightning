@@ -478,14 +478,24 @@ cdef class KernelDataset(Dataset):
 
         return cache
 
+    cdef void get_column_sv_out(self, int j, double* out):
+        cdef double* cache
+        cdef int s
+        cdef list[int].iterator it
+
+        cache = self.get_column_sv_ptr(j)
+
+        it = self.support_set.begin()
+        while it != self.support_set.end():
+            s = deref(it)
+            out[s] = cache[s]
+            inc(it)
+
     cpdef get_column_sv(self, int j):
-        cdef double* data
-        cdef np.npy_intp shape[1]
-        shape[0] = <np.npy_intp> self.n_samples
-
-        data = self.get_column_sv_ptr(j)
-
-        return np.PyArray_SimpleNewFromData(1, shape, np.NPY_DOUBLE, data)
+        cdef np.ndarray[double, ndim=1, mode='c'] out
+        out = np.zeros(self.n_samples, dtype=np.float64)
+        self.get_column_sv_out(j, <double*>out.data)
+        return out
 
     cdef void get_diag_out(self, double* out):
         cdef int i

@@ -123,6 +123,7 @@ cdef class KernelDataset(Dataset):
                              double** data,
                              int* n_nz)
     cdef double* get_column_sv_ptr(self, int j)
+    cdef void get_column_sv_out(self, int j, double* out)
     cpdef get_column_sv(self, int j)
 
     cdef void get_diag_out(self, double*out)
