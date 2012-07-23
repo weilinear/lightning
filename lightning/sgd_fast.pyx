@@ -260,35 +260,35 @@ def _binary_sgd(self,
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = X.get_n_features()
 
-    cdef np.ndarray[int, ndim=1, mode='c'] index
-    index = np.arange(n_samples, dtype=np.int32)
-
+    # Initialization
     cdef int n, i
     cdef long t = 1
     cdef double update, update_eta, update_eta_scaled, pred, eta
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
 
+    # Kernel
     cdef int linear_kernel = 1
     cdef KernelDataset kds
     if isinstance(X, KernelDataset):
         kds = <KernelDataset>X
         linear_kernel = 0
 
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    if not linear_kernel:
-        col = np.zeros(n_samples, dtype=np.float64)
-
-    random_state.shuffle(index)
-
+    # Data pointers
     cdef double* data
     cdef int* indices
     cdef int n_nz
 
+    # Shuffle training indices.
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
+    random_state.shuffle(index)
 
     for t in xrange(1, max_iter + 1):
+        # Retrieve current training instance.
         i = index[(t-1) % n_samples]
 
+        # Compute current prediction.
         if linear_kernel:
             X.get_row_ptr(i, &indices, &data, &n_nz)
             pred = _dot(W, k, indices, data, n_nz)
@@ -301,6 +301,7 @@ def _binary_sgd(self,
         eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
         update = loss.get_update(pred, y[i])
 
+        # Update if necessary.
         if update != 0:
             update_eta = update * eta
             update_eta_scaled = update_eta / w_scale
@@ -313,8 +314,10 @@ def _binary_sgd(self,
             if fit_intercept:
                 intercepts[k] += update_eta * intercept_decay
 
+        # Regularize.
         w_scale *= (1 - lmbda * eta)
 
+        # Take care of possible underflow.
         if w_scale < 1e-9:
             W[k] *= w_scale
             w_scale = 1.0
@@ -330,6 +333,7 @@ def _binary_sgd(self,
         if n_components > 0 and kds.n_sv() >= n_components:
             break
 
+    # Return unscaled weight vector.
     if w_scale != 1.0:
         W[k] *= w_scale
 
@@ -423,38 +427,38 @@ def _multiclass_hinge_sgd(self,
     cdef Py_ssize_t n_features = X.get_n_features()
     cdef Py_ssize_t n_vectors = W.shape[0]
 
-    cdef np.ndarray[int, ndim=1, mode='c'] index
-    index = np.arange(n_samples, dtype=np.int32)
-
+    # Initialization
     cdef int it, i, l
     cdef long t = 1
     cdef double update, pred, eta, scale
     cdef double intercept = 0.0
+    cdef np.ndarray[double, ndim=1, mode='c'] w_scales
+    w_scales = np.ones(n_vectors, dtype=np.float64)
 
+    # Kernel
     cdef int linear_kernel = 1
     cdef KernelDataset kds
     if isinstance(X, KernelDataset):
         kds = <KernelDataset>X
         linear_kernel = 0
 
-    cdef np.ndarray[double, ndim=1, mode='c'] w_scales
-    w_scales = np.ones(n_vectors, dtype=np.float64)
-
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    if not linear_kernel:
-        col = np.zeros(n_samples, dtype=np.float64)
-
+    # Data pointers
     cdef double* data
     cdef int* indices
     cdef int n_nz
 
+    # Shuffle training indices.
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
     random_state.shuffle(index)
 
     for t in xrange(t, max_iter + 1):
+        # Retrieve current training instance.
         i = index[(t-1) % n_samples]
 
         eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
 
+        # Compute current prediction.
         if linear_kernel:
             X.get_row_ptr(i, &indices, &data, &n_nz)
             k = _predict_multiclass(W, w_scales, intercepts,
@@ -463,6 +467,7 @@ def _multiclass_hinge_sgd(self,
             k = _kernel_predict_multiclass(W, w_scales, intercepts,
                                            kds, i)
 
+        # Update if necessary.
         if k != y[i]:
             if linear_kernel:
                 _add(W, k, indices, data, n_nz, -eta / w_scales[k])
@@ -477,10 +482,12 @@ def _multiclass_hinge_sgd(self,
                 intercepts[y[i]] += scale
 
 
+        # Regularize.
         scale = (1 - lmbda * eta)
         for l in xrange(n_vectors):
             w_scales[l] *= scale
 
+            # Take care of possible underflow.
             if w_scales[l] < 1e-9:
                 W[l] *= w_scales[l]
                 w_scales[l] = 1.0
@@ -496,6 +503,7 @@ def _multiclass_hinge_sgd(self,
         if n_components > 0 and kds.n_sv() >= n_components:
             break
 
+    # Return unscaled weight vector.
     for l in xrange(n_vectors):
         if w_scales[l] != 1.0:
             W[l] *= w_scales[l]
@@ -543,43 +551,41 @@ def _multiclass_log_sgd(self,
     cdef Py_ssize_t n_features = X.get_n_features()
     cdef Py_ssize_t n_vectors = W.shape[0]
 
-    cdef np.ndarray[int, ndim=1, mode='c'] index
-    index = np.arange(n_samples, dtype=np.int32)
-
+    # Initialization
     cdef int it, i, l
     cdef long t = 1
     cdef double update, pred, eta, scale
     cdef double intercept = 0.0
+    cdef np.ndarray[double, ndim=1, mode='c'] w_scales
+    w_scales = np.ones(n_vectors, dtype=np.float64)
+    cdef np.ndarray[double, ndim=1, mode='c'] scores
+    scores = np.ones(n_vectors, dtype=np.float64)
+    cdef int all_zero
 
+    # Kernel
     cdef int linear_kernel = 1
     cdef KernelDataset kds
     if isinstance(X, KernelDataset):
         kds = <KernelDataset>X
         linear_kernel = 0
 
-    cdef np.ndarray[double, ndim=1, mode='c'] w_scales
-    w_scales = np.ones(n_vectors, dtype=np.float64)
-
-    cdef np.ndarray[double, ndim=1, mode='c'] scores
-    scores = np.ones(n_vectors, dtype=np.float64)
-
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    if not linear_kernel:
-        col = np.zeros(n_samples, dtype=np.float64)
-
-    cdef int all_zero
-
-    random_state.shuffle(index)
-
+    # Data pointers
     cdef double* data
     cdef int* indices
     cdef int n_nz
 
+    # Shuffle training indices.
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
+    random_state.shuffle(index)
+
     for t in xrange(t, max_iter + 1):
+        # Retrieve current training instance.
         i = index[(t-1) % n_samples]
 
         eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
 
+        # Compute current prediction.
         if linear_kernel:
             X.get_row_ptr(i, &indices, &data, &n_nz)
 
@@ -594,6 +600,7 @@ def _multiclass_log_sgd(self,
 
         _softmax(scores)
 
+        # Update.
         for l in xrange(n_vectors):
             if scores[l] != 0:
                 if l == y[i]:
@@ -612,10 +619,12 @@ def _multiclass_log_sgd(self,
                 if fit_intercept:
                     intercepts[l] += update * intercept_decay
 
+        # Regularize.
         scale = (1 - lmbda * eta)
         for l in xrange(n_vectors):
             w_scales[l] *= scale
 
+            # Take care of possible underflow.
             if w_scales[l] < 1e-9:
                 W[l] *= w_scales[l]
                 w_scales[l] = 1.0
@@ -636,6 +645,7 @@ def _multiclass_log_sgd(self,
         if n_components > 0 and kds.n_sv() >= n_components:
             break
 
+    # Return unscaled weight vector.
     for l in xrange(n_vectors):
         if w_scales[l] != 1.0:
             W[l] *= w_scales[l]

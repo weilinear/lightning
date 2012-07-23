@@ -3,7 +3,7 @@
 
 import numpy as np
 
-from sklearn.base import ClassifierMixin, clone
+from sklearn.base import ClassifierMixin
 from sklearn.utils import check_random_state
 from sklearn.utils.extmath import safe_sparse_dot
 
