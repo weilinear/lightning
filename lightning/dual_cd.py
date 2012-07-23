@@ -4,16 +4,13 @@
 import numpy as np
 import scipy.sparse as sp
 
-from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.base import ClassifierMixin
 from sklearn.preprocessing import LabelBinarizer
-from sklearn.utils import check_random_state
 from sklearn.utils import safe_mask
 from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
 from .dual_cd_fast import _dual_cd
-from .dataset_fast import ContiguousDataset
-from .dataset_fast import CSRDataset
 
 class DualSVC(BaseClassifier, ClassifierMixin):
 

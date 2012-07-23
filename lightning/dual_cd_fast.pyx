@@ -52,25 +52,7 @@ def _dual_cd(self,
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = X.get_n_features()
 
-    cdef np.ndarray[int, ndim=1, mode='c'] A
-    A = np.arange(n_samples, dtype=np.int32)
-    cdef Py_ssize_t active_size = n_samples
-
-    cdef double U
-    cdef double D_ii
-
-    if loss == "l1":
-        U = C
-        D_ii = 0
-    elif loss == "l2":
-        U = DBL_MAX
-        D_ii = 1.0 / (2 * C)
-
-    cdef np.ndarray[double, ndim=1, mode='c'] Q_bar_diag
-    Q_bar_diag = np.zeros(n_samples, dtype=np.float64)
-    kds.get_diag_out(<double*>Q_bar_diag.data)
-    Q_bar_diag += D_ii
-
+    # Initialization.
     cdef double* col
     cdef double M
     cdef double m
@@ -84,16 +66,36 @@ def _dual_cd(self,
     cdef double G, PG
     cdef double step
     cdef int r
-
     cdef list[int].iterator it
-
     cdef int select_method = get_select_method(selection)
     cdef int check_n_sv = termination == "n_components"
     cdef int check_convergence = termination == "convergence"
     cdef int permute = selection == "permute" or linear_kernel
     cdef int has_callback = callback is not None
     cdef int stop = 0
+    cdef double U
+    cdef double D_ii
 
+    # Loss-dependent values.
+    if loss == "l1":
+        U = C
+        D_ii = 0
+    elif loss == "l2":
+        U = DBL_MAX
+        D_ii = 1.0 / (2 * C)
+
+    # Active set.
+    cdef np.ndarray[int, ndim=1, mode='c'] A
+    A = np.arange(n_samples, dtype=np.int32)
+    cdef Py_ssize_t active_size = n_samples
+
+    # Diagonal values of the Q matrix.
+    cdef np.ndarray[double, ndim=1, mode='c'] Q_bar_diag
+    Q_bar_diag = np.zeros(n_samples, dtype=np.float64)
+    kds.get_diag_out(<double*>Q_bar_diag.data)
+    Q_bar_diag += D_ii
+
+    # Data pointers.
     cdef double* data
     cdef int* indices
     cdef int n_nz
@@ -186,6 +188,7 @@ def _dual_cd(self,
                         kds.remove_sv(i)
 
                 if linear_kernel:
+                    # Update the primal coefficients.
                     step = (alpha_i - alpha_old) * y_i
                     for jj in xrange(n_nz):
                         j = indices[jj]
@@ -203,6 +206,7 @@ def _dual_cd(self,
                     stop = 1
                     break
 
+            # Output progress.
             if verbose >= 1 and s % 100 == 0:
                 sys.stdout.write(".")
                 sys.stdout.flush()
