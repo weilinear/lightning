@@ -6,7 +6,6 @@ import scipy.sparse as sp
 
 from sklearn.base import ClassifierMixin
 from sklearn.preprocessing import LabelBinarizer
-from sklearn.utils import safe_mask
 from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
@@ -71,22 +70,9 @@ class DualSVC(BaseClassifier, ClassifierMixin):
                      self.shrinking, self.callback, verbose=self.verbose)
 
         if self.kernel != "linear":
-            self._post_process(X)
+            self._post_process_dual(X)
 
         return self
-
-    def _post_process(self, X):
-        # We can't know the support vectors when using precomputed kernels.
-        if self.kernel != "precomputed":
-            sv = np.sum(self.dual_coef_ != 0, axis=0, dtype=bool)
-            if np.sum(sv) > 0:
-                self.dual_coef_ = np.ascontiguousarray(self.dual_coef_[:, sv])
-                mask = safe_mask(X, sv)
-                self.support_vectors_ = np.ascontiguousarray(X[mask])
-                self.support_indices_ = np.arange(X.shape[0], dtype=np.int32)[sv]
-
-            if self.verbose >= 1:
-                print "Number of support vectors:", np.sum(sv)
 
     def decision_function(self, X):
         if self.kernel == "linear":
