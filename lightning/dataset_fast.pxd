@@ -128,6 +128,8 @@ cdef class KernelDataset(Dataset):
     cdef void get_diag_out(self, double*out)
     cpdef get_diag(self)
 
+    cpdef double get_element(self, int i, int j)
+
     cpdef remove_column(self, int i)
     cpdef add_sv(self, int i)
     cpdef remove_sv(self, int i)

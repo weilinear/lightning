@@ -560,6 +560,19 @@ cdef class KernelDataset(Dataset):
     cpdef get_size(self):
         return self.size
 
+    cpdef double get_element(self, int i, int j):
+        cdef double* data_X
+        cdef double* data_Y
+
+        if i == j and self.kernel == RBF_KERNEL:
+            return 1.0
+        else:
+            data_X = self.data + i * self.n_features_Y
+            data_Y = self.data_Y + j * self.n_features_Y
+            return _kernel(data_X, data_Y, self.n_features_Y,
+                           self.gamma, self.coef0, self.degree,
+                           self.kernel)
+
     def dot(self, coef):
         cdef int n_features = coef.shape[0]
         cdef int n_vectors = coef.shape[1]

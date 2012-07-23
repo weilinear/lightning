@@ -277,3 +277,18 @@ def test_kernel_diag_rbf():
     good = K.flat[::K.shape[0] + 1]
     assert_array_almost_equal(out, good)
 
+
+def test_kernel_get_element_linear():
+    K = pairwise_kernels(X, metric="linear")
+    kds = KernelDataset(X, X, "linear")
+    for i in xrange(K.shape[0]):
+        for j in xrange(K.shape[1]):
+            assert_almost_equal(K[i, j], kds.get_element(i, j))
+
+
+def test_kernel_get_element_rbf():
+    K = pairwise_kernels(X, metric="rbf", gamma=0.1)
+    kds = KernelDataset(X, X, "rbf", gamma=0.1)
+    for i in xrange(K.shape[0]):
+        for j in xrange(K.shape[1]):
+            assert_almost_equal(K[i, j], kds.get_element(i, j))
