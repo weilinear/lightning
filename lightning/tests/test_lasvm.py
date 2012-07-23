@@ -67,5 +67,4 @@ def test_n_components():
     clf = LaSVM(random_state=0, max_iter=2, kernel="rbf", finish_step=True,
                 termination="n_components", n_components=30)
     clf.fit(bin_dense, bin_target)
-    n_sv = np.sum(clf.coef_ != 0)
-    assert_equal(n_sv, 30)
+    assert_equal(clf.n_nonzero(), 30)

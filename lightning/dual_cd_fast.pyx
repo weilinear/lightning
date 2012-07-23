@@ -18,7 +18,6 @@ from libcpp.vector cimport vector
 import numpy as np
 cimport numpy as np
 
-from lightning.kernel_fast cimport KernelCache
 from lightning.select_fast cimport get_select_method, select_sv_kds
 from lightning.random.random_fast cimport RandomState
 from lightning.dataset_fast cimport Dataset
