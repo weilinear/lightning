@@ -16,8 +16,9 @@ from cython.operator cimport predecrement as dec
 
 from libcpp.list cimport list
 
-from lightning.kernel_fast cimport KernelCache
-from lightning.kernel_fast cimport Kernel
+from lightning.dataset_fast cimport KernelDataset
+from lightning.dataset_fast cimport Dataset
+
 
 cdef extern from "math.h":
     cdef extern double exp(double x)
@@ -182,32 +183,32 @@ cdef class EpsilonInsensitive(LossFunction):
 
 cdef double _dot(np.ndarray[double, ndim=2, mode='c'] W,
                  int k,
-                 np.ndarray[double, ndim=2, mode='c'] X,
-                 int i):
-    cdef Py_ssize_t n_features = X.shape[1]
-    cdef int j
+                 int *indices,
+                 double *data,
+                 int n_nz):
+    cdef int jj, j
     cdef double pred = 0.0
 
-    for j in xrange(n_features):
-        pred += X[i, j] * W[k, j]
+    for jj in xrange(n_nz):
+        j = indices[jj]
+        pred += data[jj] * W[k, j]
 
     return pred
 
 
 cdef double _kernel_dot(np.ndarray[double, ndim=2, mode='c'] W,
                         int k,
-                        np.ndarray[double, ndim=2, mode='c'] X,
-                        int i,
-                        KernelCache kcache,
-                        np.ndarray[double, ndim=1, mode='c'] col):
+                        KernelDataset kds,
+                        int i):
     cdef int j
     cdef double pred = 0
     cdef list[int].iterator it
+    cdef double* col
 
-    kcache.compute_column_sv(X, X, i, col)
-    it = kcache.support_set.begin()
+    col = kds.get_column_sv_ptr(i)
+    it = kds.support_set.begin()
 
-    while it != kcache.support_set.end():
+    while it != kds.support_set.end():
         j = deref(it)
         pred += col[j] * W[k, j]
         inc(it)
@@ -217,14 +218,15 @@ cdef double _kernel_dot(np.ndarray[double, ndim=2, mode='c'] W,
 
 cdef void _add(np.ndarray[double, ndim=2, mode='c'] W,
                int k,
-               np.ndarray[double, ndim=2, mode='c'] X,
-               int i,
+               int *indices,
+               double *data,
+               int n_nz,
                double scale):
-    cdef Py_ssize_t n_features = X.shape[1]
-    cdef int j
+    cdef int jj, j
 
-    for j in xrange(n_features):
-        W[k, j] += X[i, j] * scale
+    for jj in xrange(n_nz):
+        j = indices[jj]
+        W[k, j] += data[jj] * scale
 
 
 cdef double _get_eta(int learning_rate, double lmbda,
@@ -241,11 +243,9 @@ def _binary_sgd(self,
                 np.ndarray[double, ndim=2, mode='c'] W,
                 np.ndarray[double, ndim=1] intercepts,
                 int k,
-                np.ndarray[double, ndim=2, mode='c'] X,
+                Dataset X,
                 np.ndarray[double, ndim=1] y,
                 LossFunction loss,
-                KernelCache kcache,
-                int linear_kernel,
                 int n_components,
                 double lmbda,
                 int learning_rate,
@@ -257,11 +257,11 @@ def _binary_sgd(self,
                 random_state,
                 int verbose):
 
-    cdef Py_ssize_t n_samples = X.shape[0]
-    cdef Py_ssize_t n_features = X.shape[1]
+    cdef Py_ssize_t n_samples = X.get_n_samples()
+    cdef Py_ssize_t n_features = X.get_n_features()
 
-    cdef np.ndarray[int, ndim=1, mode='c'] indices
-    indices = np.arange(n_samples, dtype=np.int32)
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
 
     cdef int n, i
     cdef long t = 1
@@ -269,19 +269,31 @@ def _binary_sgd(self,
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
 
+    cdef int linear_kernel = 1
+    cdef KernelDataset kds
+    if isinstance(X, KernelDataset):
+        kds = <KernelDataset>X
+        linear_kernel = 0
+
     cdef np.ndarray[double, ndim=1, mode='c'] col
     if not linear_kernel:
         col = np.zeros(n_samples, dtype=np.float64)
 
-    random_state.shuffle(indices)
+    random_state.shuffle(index)
+
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
+
 
     for t in xrange(1, max_iter + 1):
-        i = indices[(t-1) % n_samples]
+        i = index[(t-1) % n_samples]
 
         if linear_kernel:
-            pred = _dot(W, k, X, i)
+            X.get_row_ptr(i, &indices, &data, &n_nz)
+            pred = _dot(W, k, indices, data, n_nz)
         else:
-            pred = _kernel_dot(W, k, X, i, kcache, col)
+            pred = _kernel_dot(W, k, kds, i)
 
         pred *= w_scale
         pred += intercepts[k]
@@ -294,7 +306,7 @@ def _binary_sgd(self,
             update_eta_scaled = update_eta / w_scale
 
             if linear_kernel:
-                _add(W, k, X, i, update_eta_scaled)
+                _add(W, k, indices, data, n_nz, update_eta_scaled)
             else:
                 W[k, i] += update_eta_scaled
 
@@ -310,12 +322,12 @@ def _binary_sgd(self,
         # Update support vector set.
         if not linear_kernel:
             if W[k, i] == 0:
-                kcache.remove_sv(i)
+                kds.remove_sv(i)
             else:
-                kcache.add_sv(i)
+                kds.add_sv(i)
 
         # Stop if necessary.
-        if n_components > 0 and kcache.n_sv() >= n_components:
+        if n_components > 0 and kds.n_sv() >= n_components:
             break
 
     if w_scale != 1.0:
@@ -325,11 +337,11 @@ def _binary_sgd(self,
 cdef int _predict_multiclass(np.ndarray[double, ndim=2, mode='c'] W,
                              np.ndarray[double, ndim=1] w_scales,
                              np.ndarray[double, ndim=1] intercepts,
-                             np.ndarray[double, ndim=2, mode='c'] X,
-                             int i):
-    cdef Py_ssize_t n_features = X.shape[1]
+                             int* indices,
+                             double *data,
+                             int n_nz):
     cdef Py_ssize_t n_vectors = W.shape[0]
-    cdef int j, l
+    cdef int j, jj, l
 
     cdef double pred
     cdef double best = -DBL_MAX
@@ -338,12 +350,14 @@ cdef int _predict_multiclass(np.ndarray[double, ndim=2, mode='c'] W,
     for l in xrange(n_vectors):
         pred = 0
 
-        for j in xrange(n_features):
-            pred += X[i, j] * W[l, j]
+        for jj in xrange(n_nz):
+            j = indices[jj]
+            pred += data[jj] * W[l, j]
 
         pred *= w_scales[l]
         pred += intercepts[l]
 
+        # Cost-sensitive learning
         # pred += loss(y_true, y_pred)
 
         if pred > best:
@@ -356,25 +370,23 @@ cdef int _predict_multiclass(np.ndarray[double, ndim=2, mode='c'] W,
 cdef int _kernel_predict_multiclass(np.ndarray[double, ndim=2, mode='c'] W,
                                     np.ndarray[double, ndim=1] w_scales,
                                     np.ndarray[double, ndim=1] intercepts,
-                                    np.ndarray[double, ndim=2, mode='c'] X,
-                                    int i,
-                                    KernelCache kcache,
-                                    np.ndarray[double, ndim=1] col):
-    cdef Py_ssize_t n_features = X.shape[1]
+                                    KernelDataset kds,
+                                    int i):
     cdef Py_ssize_t n_vectors = W.shape[0]
     cdef int j, l
     cdef double pred
     cdef double best = -DBL_MAX
     cdef int selected = 0
     cdef list[int].iterator it
+    cdef double* col
 
-    kcache.compute_column_sv(X, X, i, col)
+    col = kds.get_column_sv_ptr(i)
 
     for l in xrange(n_vectors):
         pred = 0
 
-        it = kcache.support_set.begin()
-        while it != kcache.support_set.end():
+        it = kds.support_set.begin()
+        while it != kds.support_set.end():
             j = deref(it)
             pred += col[j] * W[l, j]
             inc(it)
@@ -394,10 +406,8 @@ cdef int _kernel_predict_multiclass(np.ndarray[double, ndim=2, mode='c'] W,
 def _multiclass_hinge_sgd(self,
                           np.ndarray[double, ndim=2, mode='c'] W,
                           np.ndarray[double, ndim=1] intercepts,
-                          np.ndarray[double, ndim=2, mode='c'] X,
+                          Dataset X,
                           np.ndarray[int, ndim=1] y,
-                          KernelCache kcache,
-                          int linear_kernel,
                           int n_components,
                           double lmbda,
                           int learning_rate,
@@ -409,17 +419,23 @@ def _multiclass_hinge_sgd(self,
                           random_state,
                           int verbose):
 
-    cdef Py_ssize_t n_samples = X.shape[0]
-    cdef Py_ssize_t n_features = X.shape[1]
+    cdef Py_ssize_t n_samples = X.get_n_samples()
+    cdef Py_ssize_t n_features = X.get_n_features()
     cdef Py_ssize_t n_vectors = W.shape[0]
 
-    cdef np.ndarray[int, ndim=1, mode='c'] indices
-    indices = np.arange(n_samples, dtype=np.int32)
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
 
     cdef int it, i, l
     cdef long t = 1
     cdef double update, pred, eta, scale
     cdef double intercept = 0.0
+
+    cdef int linear_kernel = 1
+    cdef KernelDataset kds
+    if isinstance(X, KernelDataset):
+        kds = <KernelDataset>X
+        linear_kernel = 0
 
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
     w_scales = np.ones(n_vectors, dtype=np.float64)
@@ -428,23 +444,29 @@ def _multiclass_hinge_sgd(self,
     if not linear_kernel:
         col = np.zeros(n_samples, dtype=np.float64)
 
-    random_state.shuffle(indices)
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
+
+    random_state.shuffle(index)
 
     for t in xrange(t, max_iter + 1):
-        i = indices[(t-1) % n_samples]
+        i = index[(t-1) % n_samples]
 
         eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
 
         if linear_kernel:
-            k = _predict_multiclass(W, w_scales, intercepts, X, i)
+            X.get_row_ptr(i, &indices, &data, &n_nz)
+            k = _predict_multiclass(W, w_scales, intercepts,
+                                    indices, data, n_nz)
         else:
-            k = _kernel_predict_multiclass(W, w_scales, intercepts, X, i,
-                                           kcache, col)
+            k = _kernel_predict_multiclass(W, w_scales, intercepts,
+                                           kds, i)
 
         if k != y[i]:
             if linear_kernel:
-                _add(W, k, X, i, -eta / w_scales[k])
-                _add(W, y[i], X, i, eta / w_scales[y[i]])
+                _add(W, k, indices, data, n_nz, -eta / w_scales[k])
+                _add(W, y[i], indices, data, n_nz, eta / w_scales[y[i]])
             else:
                 W[k, i] -= eta / w_scales[k]
                 W[y[i], i] += eta / w_scales[y[i]]
@@ -466,12 +488,12 @@ def _multiclass_hinge_sgd(self,
         # Update support vector set.
         if not linear_kernel:
             if W[k, i] == 0 and W[y[i], i] == 0:
-                kcache.remove_sv(i)
+                kds.remove_sv(i)
             else:
-                kcache.add_sv(i)
+                kds.add_sv(i)
 
         # Stop if necessary.
-        if n_components > 0 and kcache.n_sv() >= n_components:
+        if n_components > 0 and kds.n_sv() >= n_components:
             break
 
     for l in xrange(n_vectors):
@@ -504,10 +526,8 @@ cdef void _softmax(np.ndarray[double, ndim=1] scores):
 def _multiclass_log_sgd(self,
                         np.ndarray[double, ndim=2, mode='c'] W,
                         np.ndarray[double, ndim=1] intercepts,
-                        np.ndarray[double, ndim=2, mode='c'] X,
+                        Dataset X,
                         np.ndarray[int, ndim=1] y,
-                        KernelCache kcache,
-                        int linear_kernel,
                         int n_components,
                         double lmbda,
                         int learning_rate,
@@ -519,17 +539,23 @@ def _multiclass_log_sgd(self,
                         random_state,
                         int verbose):
 
-    cdef Py_ssize_t n_samples = X.shape[0]
-    cdef Py_ssize_t n_features = X.shape[1]
+    cdef Py_ssize_t n_samples = X.get_n_samples()
+    cdef Py_ssize_t n_features = X.get_n_features()
     cdef Py_ssize_t n_vectors = W.shape[0]
 
-    cdef np.ndarray[int, ndim=1, mode='c'] indices
-    indices = np.arange(n_samples, dtype=np.int32)
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
 
     cdef int it, i, l
     cdef long t = 1
     cdef double update, pred, eta, scale
     cdef double intercept = 0.0
+
+    cdef int linear_kernel = 1
+    cdef KernelDataset kds
+    if isinstance(X, KernelDataset):
+        kds = <KernelDataset>X
+        linear_kernel = 0
 
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
     w_scales = np.ones(n_vectors, dtype=np.float64)
@@ -543,18 +569,25 @@ def _multiclass_log_sgd(self,
 
     cdef int all_zero
 
-    random_state.shuffle(indices)
+    random_state.shuffle(index)
+
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
 
     for t in xrange(t, max_iter + 1):
-        i = indices[(t-1) % n_samples]
+        i = index[(t-1) % n_samples]
 
         eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
 
+        if linear_kernel:
+            X.get_row_ptr(i, &indices, &data, &n_nz)
+
         for l in xrange(n_vectors):
             if linear_kernel:
-                scores[l] = _dot(W, l, X, i)
+                scores[l] = _dot(W, l, indices, data, n_nz)
             else:
-                scores[l] = _kernel_dot(W, l, X, i, kcache, col)
+                scores[l] = _kernel_dot(W, l, kds, i)
 
             scores[l] *= w_scales[l]
             scores[l] += intercepts[l]
@@ -572,7 +605,7 @@ def _multiclass_log_sgd(self,
                     update = -eta * scores[l]
 
                 if linear_kernel:
-                    _add(W, l, X, i, update / w_scales[l])
+                    _add(W, l, indices, data, n_nz, update / w_scales[l])
                 else:
                     W[l, i] += update / w_scales[l]
 
@@ -595,12 +628,12 @@ def _multiclass_log_sgd(self,
                     all_zero = 0
                     break
             if all_zero:
-                kcache.remove_sv(i)
+                kds.remove_sv(i)
             else:
-                kcache.add_sv(i)
+                kds.add_sv(i)
 
         # Stop if necessary.
-        if n_components > 0 and kcache.n_sv() >= n_components:
+        if n_components > 0 and kds.n_sv() >= n_components:
             break
 
     for l in xrange(n_vectors):

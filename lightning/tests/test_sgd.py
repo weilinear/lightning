@@ -8,7 +8,7 @@ from nose.tools import assert_raises, assert_true, assert_equal, \
 from sklearn.utils.testing import assert_greater
 
 from sklearn.datasets.samples_generator import make_classification
-from lightning.sgd import SGDClassifier, KernelSGDClassifier
+from lightning.sgd import SGDClassifier, SGDClassifier
 
 
 bin_dense, bin_target = make_classification(n_samples=200, n_features=100,
@@ -39,7 +39,7 @@ def test_binary_linear_sgd():
 
 
 def test_binary_sgd_equivalence():
-    clf = KernelSGDClassifier(kernel="linear",
+    clf = SGDClassifier(kernel="linear",
                               random_state=0)
     clf.fit(bin_dense, bin_target)
     decisions = clf.decision_function(bin_dense)
@@ -56,7 +56,7 @@ def test_binary_sgd_equivalence():
 
 def test_binary_kernel_sgd():
     for fit_intercept in (True, False):
-        clf = KernelSGDClassifier(kernel="rbf", gamma=0.1,
+        clf = SGDClassifier(kernel="rbf", gamma=0.1,
                                   fit_intercept=fit_intercept,
                                   random_state=0)
         clf.fit(bin_dense, bin_target)
@@ -65,7 +65,7 @@ def test_binary_kernel_sgd():
 
 def test_multiclass_kernel_sgd():
     for fit_intercept in (True, False):
-        clf = KernelSGDClassifier(kernel="rbf", gamma=0.1,
+        clf = SGDClassifier(kernel="rbf", gamma=0.1,
                                   fit_intercept=fit_intercept,
                                   random_state=0)
         clf.fit(mult_dense, mult_target)
@@ -79,7 +79,7 @@ def test_multiclass_sgd():
 
 
 def test_multiclass_sgd_equivalence():
-    clf = KernelSGDClassifier(kernel="linear",
+    clf = SGDClassifier(kernel="linear",
                               random_state=0)
     clf.fit(mult_dense, mult_target)
     decisions = clf.decision_function(mult_dense)
@@ -104,7 +104,7 @@ def test_multiclass_hinge_sgd():
 
 def test_multiclass_hinge_kernel_sgd():
     for fit_intercept in (True, False):
-        clf = KernelSGDClassifier(kernel="rbf", gamma=0.1,
+        clf = SGDClassifier(kernel="rbf", gamma=0.1,
                                   loss="hinge", multiclass="natural",
                                   fit_intercept=fit_intercept,
                                   random_state=0)
@@ -114,7 +114,7 @@ def test_multiclass_hinge_kernel_sgd():
 
 def test_multiclass_natural_kernel_sgd_equivalence():
     for loss in ("hinge", "log"):
-        clf = KernelSGDClassifier(kernel="linear",
+        clf = SGDClassifier(kernel="linear",
                                   loss=loss, multiclass="natural",
                                   random_state=0)
         clf.fit(mult_dense, mult_target)
@@ -141,7 +141,7 @@ def test_multiclass_log_sgd():
 
 def test_multiclass_log_kernel_sgd():
     for fit_intercept in (True, False):
-        clf = KernelSGDClassifier(kernel="rbf", gamma=0.1,
+        clf = SGDClassifier(kernel="rbf", gamma=0.1,
                                   loss="log", multiclass="natural",
                                   fit_intercept=fit_intercept,
                                   random_state=0)
@@ -150,26 +150,26 @@ def test_multiclass_log_kernel_sgd():
 
 
 def test_n_components_binary():
-    clf = KernelSGDClassifier(kernel="rbf", gamma=0.1, loss="hinge",
+    clf = SGDClassifier(kernel="rbf", gamma=0.1, loss="hinge",
                               random_state=0, n_components=50)
     clf.fit(bin_dense, bin_target)
-    assert_equal(clf.n_support_vectors(), 50)
+    assert_equal(clf.n_nonzero(), 50)
     assert_greater(clf.score(bin_dense, bin_target), 0.6)
 
 
 def test_n_components_multiclass():
-    clf = KernelSGDClassifier(kernel="rbf", gamma=1.0, loss="hinge",
+    clf = SGDClassifier(kernel="rbf", gamma=1.0, loss="hinge",
                               random_state=0, n_components=50)
     clf.fit(mult_dense, mult_target)
-    assert_equal(clf.n_support_vectors(), 55)
+    assert_equal(clf.n_nonzero(), 55)
     assert_greater(clf.score(mult_dense, mult_target), 0.3)
 
 
 def test_n_components_multiclass_natural():
     for loss in ("hinge", "log"):
-        clf = KernelSGDClassifier(loss=loss, multiclass="natural",
+        clf = SGDClassifier(loss=loss, multiclass="natural",
                                   kernel="rbf", gamma=0.1, n_components=50,
                                   random_state=0)
         clf.fit(mult_dense, mult_target)
-        assert_equal(clf.n_support_vectors(), 50)
+        assert_equal(clf.n_nonzero(), 50)
         assert_greater(clf.score(mult_dense, mult_target), 0.38)
