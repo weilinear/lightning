@@ -4,11 +4,9 @@
 import numpy as np
 import scipy.sparse as sp
 
-from sklearn.base import ClassifierMixin, clone
+from sklearn.base import ClassifierMixin
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import check_random_state
-from sklearn.utils import safe_asarray
-from sklearn.utils import safe_mask
 
 from .base import BaseClassifier
 

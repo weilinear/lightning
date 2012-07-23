@@ -905,30 +905,28 @@ def _primal_cd_l1r(self,
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = index.shape[0]
 
+    # Initialization
     cdef int j, s, t
     cdef int active_size = n_features
-
     cdef double Lpmax_old = DBL_MAX
     cdef double Lpmax_new
     cdef double Lpmax_init
     cdef double violation
-
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    col = np.zeros(n_samples, dtype=np.float64)
-
     cdef int check_n_sv = termination == "n_components"
     cdef int check_convergence = termination == "convergence"
     cdef int stop = 0
     cdef int select_method = get_select_method(selection)
     cdef int permute = selection == "permute"
     cdef int has_callback = callback is not None
+    cdef int n_sv = 0
+    cdef int shrink = 0
+    cdef np.ndarray[double, ndim=1, mode='c'] col
+    col = np.zeros(n_samples, dtype=np.float64)
 
+    # Data pointers
     cdef double* data
     cdef int* indices
     cdef int n_nz
-
-    cdef int n_sv = 0
-    cdef int shrink = 0
 
     # FIXME: would be better to store the support indices in the class.
     for j in xrange(n_features):
@@ -947,21 +945,26 @@ def _primal_cd_l1r(self,
         s = 0
 
         while s < active_size:
+            # Select coordinate.
             if permute:
                 j = index[s]
             else:
                 j = select_sv_precomputed(index, search_size,
                                           active_size, select_method, b, rs)
 
+            # Retrieve column.
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
+            # Solve sub-problem.
             loss.solve_l1(j, C, <double*>w.data, n_samples,
                           indices, data, n_nz, <double*>col.data,
                           <double*>y.data, <double*>b.data,
                           Lpmax_old, &violation, &n_sv)
 
+            # Update maximum absolute derivative.
             Lpmax_new = max(Lpmax_new, violation)
 
+            # Check if need to shrink.
             if shrink:
                 active_size -= 1
                 index[s], index[active_size] = index[active_size], index[s]
@@ -979,6 +982,7 @@ def _primal_cd_l1r(self,
                     stop = 1
                     break
 
+            # Output progress.
             if verbose >= 1 and s % 100 == 0:
                 sys.stdout.write(".")
                 sys.stdout.flush()
@@ -992,6 +996,7 @@ def _primal_cd_l1r(self,
         if t == 0:
             Lpmax_init = Lpmax_new
 
+        # Check convergence.
         if check_convergence and Lpmax_new <= tol * Lpmax_init:
             if active_size == n_features:
                 if verbose >= 1:
@@ -1032,27 +1037,27 @@ def _primal_cd_l1l2r(self,
     cdef int n_features = index.shape[0]
     cdef Py_ssize_t n_vectors = w.shape[0]
 
+    # Initialization
     cdef int t, s, i, j, k, n
     cdef int active_size = n_features
 
-    cdef double* data
-    cdef int* indices
-    cdef int n_nz
-
     cdef np.ndarray[double, ndim=1, mode='c'] g
-    g = np.zeros(n_vectors, dtype=np.float64)
-
     cdef np.ndarray[double, ndim=1, mode='c'] d
-    d = np.zeros(n_vectors, dtype=np.float64)
-
     cdef np.ndarray[double, ndim=1, mode='c'] d_old
-    d_old = np.zeros(n_vectors, dtype=np.float64)
-
     cdef np.ndarray[double, ndim=2, mode='c'] Z
+
+    g = np.zeros(n_vectors, dtype=np.float64)
+    d = np.zeros(n_vectors, dtype=np.float64)
+    d_old = np.zeros(n_vectors, dtype=np.float64)
     if multiclass:
         Z = np.zeros((n_samples, 1), dtype=np.float64)
     else:
         Z = np.zeros((n_vectors, n_samples), dtype=np.float64)
+
+    # Data pointers
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
 
     for t in xrange(max_iter):
         if verbose >= 1:
@@ -1061,16 +1066,20 @@ def _primal_cd_l1l2r(self,
         rs.shuffle(index[:active_size])
 
         for s in xrange(active_size):
+            # Select coordinate.
             j = index[s]
 
+            # Retrieve column.
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
+            # Solve sub-problem.
             loss.solve_l1l2(j, C, w, n_vectors,
                             indices, data, n_nz,
                             <int*>y.data, Y, multiclass,
                             b, <double*>g.data, <double*>d.data,
                             <double*>d_old.data, <double*>Z.data)
 
+            # Output progress.
             if verbose >= 1 and s % 100 == 0:
                 sys.stdout.write(".")
                 sys.stdout.flush()
@@ -1097,16 +1106,11 @@ def _primal_cd_l2r(self,
     cdef int n_samples = X.get_n_samples()
     cdef int n_features = index.shape[0]
 
-    cdef double* data
-    cdef int* indices
-    cdef int n_nz
-
+    # Initialization
     cdef int i, j, s, t
     cdef double Dp, Dpmax
-
     cdef np.ndarray[double, ndim=1, mode='c'] col
     col = np.zeros(n_samples, dtype=np.float64)
-
     cdef int check_n_sv = termination == "n_components"
     cdef int check_convergence = termination == "convergence"
     cdef int has_callback = callback is not None
@@ -1114,6 +1118,11 @@ def _primal_cd_l2r(self,
     cdef int permute = selection == "permute"
     cdef int stop = 0
     cdef int n_sv = 0
+
+    # Data pointers
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
 
 
     for t in xrange(max_iter):
@@ -1126,14 +1135,17 @@ def _primal_cd_l2r(self,
             rs.shuffle(index)
 
         for s in xrange(n_features):
+            # Select coordinate.
             if permute:
                 j = index[s]
             else:
                 j = select_sv_precomputed(index, search_size,
                                          n_features, select_method, b, rs)
 
+            # Retrieve column.
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
+            # Solve sub-problem.
             loss.solve_l2(j,
                           C,
                           <double*>w.data,
@@ -1143,6 +1155,7 @@ def _primal_cd_l2r(self,
                           <double*>b.data,
                           &Dp)
 
+            # Update maximum absolute derivative.
             if fabs(Dp) > Dpmax:
                 Dpmax = fabs(Dp)
 
@@ -1161,15 +1174,16 @@ def _primal_cd_l2r(self,
                     stop = 1
                     break
 
+            # Output progress.
             if verbose >= 1 and s % 100 == 0:
                 sys.stdout.write(".")
                 sys.stdout.flush()
-
         # end for (iterate over features)
 
         if stop:
             break
 
+        # Check convergence.
         if check_convergence and Dpmax < tol:
             if verbose >= 1:
                 print "\nConverged at iteration", t
