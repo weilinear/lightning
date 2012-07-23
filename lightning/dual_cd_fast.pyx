@@ -18,7 +18,7 @@ from libcpp.vector cimport vector
 import numpy as np
 cimport numpy as np
 
-from lightning.select_fast cimport get_select_method, select_sv_kds
+from lightning.select_fast cimport get_select_method, select_sv
 from lightning.random.random_fast cimport RandomState
 from lightning.dataset_fast cimport Dataset
 from lightning.dataset_fast cimport KernelDataset
@@ -119,8 +119,8 @@ def _dual_cd(self,
             if permute:
                 i = A[s]
             else:
-                i = select_sv_kds(A, search_size, active_size, select_method,
-                                  alpha, 0, kds, y, 0, rs)
+                i = select_sv(A, search_size, active_size, select_method,
+                              alpha, 0, kds, y, 0, rs)
 
             y_i = y[i]
             alpha_i = fabs(alpha[i])

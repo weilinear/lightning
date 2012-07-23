@@ -11,9 +11,9 @@ from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import check_random_state
 from sklearn.metrics.pairwise import pairwise_kernels
 
-from .base import BaseKernelClassifier
+from .base import BaseClassifier
 
-class PrimalNewton(BaseKernelClassifier, ClassifierMixin):
+class PrimalNewton(BaseClassifier, ClassifierMixin):
 
     def __init__(self, lmbda=1.0, solver="cg",
                  max_iter=50, tol=1e-3, n_components=None,
@@ -31,6 +31,11 @@ class PrimalNewton(BaseKernelClassifier, ClassifierMixin):
         self.random_state = random_state
         self.verbose = verbose
         self.n_jobs = n_jobs
+
+    def _kernel_params(self):
+        return {"gamma" : self.gamma,
+                "degree" : self.degree,
+                "coef0" : self.coef0}
 
     def _solve(self, A, b):
         if self.solver == "cg":
@@ -130,3 +135,9 @@ class PrimalNewton(BaseKernelClassifier, ClassifierMixin):
         self._post_process(X)
 
         return self
+
+    def decision_function(self, X):
+        K = pairwise_kernels(X, self.support_vectors_, filter_params=True,
+                             n_jobs=self.n_jobs, metric=self.kernel,
+                             **self._kernel_params())
+        return np.dot(K, self.coef_.T)

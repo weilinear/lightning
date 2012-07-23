@@ -15,7 +15,7 @@ import numpy as np
 cimport numpy as np
 
 from lightning.dataset_fast cimport KernelDataset
-from lightning.select_fast cimport get_select_method, select_sv_kds
+from lightning.select_fast cimport get_select_method, select_sv
 from lightning.random.random_fast cimport RandomState
 
 cdef extern from "float.h":
@@ -348,8 +348,8 @@ def _lasvm(self,
 
         for i in xrange(n_samples):
             # Select a support vector candidate.
-            s = select_sv_kds(A, search_size, n_samples, select_method,
-                              alpha, b[0], kds, y, 1, rs)
+            s = select_sv(A, search_size, n_samples, select_method,
+                          alpha, b[0], kds, y, 1, rs)
 
             # Attempt to add it.
             _process(s, kds, y_ptr, alpha_ptr, g_ptr, C, tau, col_ptr, col2_ptr)

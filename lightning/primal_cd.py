@@ -81,7 +81,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         self.support_vectors_ = None
         self.coef_ = None
 
-    def fit(self, X, y, kcache=None):
+    def fit(self, X, y):
         rs = self._get_random_state()
 
         # Check data
