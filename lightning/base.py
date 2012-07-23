@@ -92,8 +92,8 @@ class BaseClassifier(BaseEstimator):
 
         return out
 
-    def _get_dataset(self, X, Y=None):
-        if self.kernel is not None:
+    def _get_dataset(self, X, Y=None, kernel=True):
+        if kernel and self.kernel is not None:
             if Y is None:
                 Y = X
             return KernelDataset(X, Y, self.kernel,
