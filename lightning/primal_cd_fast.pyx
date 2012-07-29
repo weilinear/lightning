@@ -186,7 +186,7 @@ cdef class LossFunction:
                  Lp_p > Lpmax_old / n_samples and \
                  Lp_n < -Lpmax_old / n_samples:
                 # Shrink!
-                if self.verbose >=2:
+                if self.verbose >= 2:
                     print "Shrink variable", j
                 return 1
         elif w[j] > 0:
@@ -260,34 +260,39 @@ cdef class LossFunction:
 
     # L1/L2 regularization
 
-    cdef void solve_l1l2(self,
-                         int j,
-                         double C,
-                         np.ndarray[double, ndim=2, mode='c'] w,
-                         int n_vectors,
-                         int* indices,
-                         double *data,
-                         int n_nz,
-                         int* y,
-                         np.ndarray[double, ndim=2, mode='fortran'] Y,
-                         int multiclass,
-                         np.ndarray[double, ndim=2, mode='c'] b,
-                         double *g,
-                         double *d,
-                         double *d_old,
-                         double* Z):
+    cdef int solve_l1l2(self,
+                        int j,
+                        double C,
+                        np.ndarray[double, ndim=2, mode='c'] w,
+                        int n_vectors,
+                        int* indices,
+                        double *data,
+                        int n_nz,
+                        int* y,
+                        np.ndarray[double, ndim=2, mode='fortran'] Y,
+                        int multiclass,
+                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double *g,
+                        double *d,
+                        double *d_old,
+                        double* Z,
+                        double Lpmax_old,
+                        double *violation,
+                        int shrinking):
 
+        cdef int n_samples = Y.shape[0]
         cdef int i, k, ii, step
         cdef double scaling, delta, L, R_j, Lpp_max, dmax
         cdef double tmp, L_new, R_j_new
         cdef double L_tmp, bound, Lpp_tmp
-
-        cdef int n_samples = Y.shape[0]
         cdef double* y_ptr
         cdef double* b_ptr
         cdef double* Z_ptr
-        cdef double z_diff
+        cdef double z_diff, g_norm
+        cdef double lmbda = 1.0
+        cdef int nv = n_samples * n_vectors
 
+        # Compute partial gradient.
         if multiclass:
             self.derivatives_mc(j, C, n_vectors, indices, data, n_nz,
                                 y, b, g, Z, &L, &Lpp_max)
@@ -308,6 +313,27 @@ cdef class LossFunction:
                 Z_ptr += n_samples
 
             Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
+
+
+        # Compute partial gradient norm.
+        g_norm = 0
+        for k in xrange(n_vectors):
+            g_norm += g[k] * g[k]
+        g_norm = sqrt(g_norm)
+
+        # Violation and shrinking.
+        if g_norm == 0:
+            g_norm -= lmbda
+            if g_norm > 0:
+                violation[0] = g_norm
+            elif shrinking and \
+                 g_norm + Lpmax_old / nv < 0:
+                # Shrink!
+                if self.verbose >= 2:
+                    print "Shrink variable", j
+                return 1
+        else:
+            violation[0] = fabs(g_norm - lmbda)
 
         # Compute vector to be projected.
         for k in xrange(n_vectors):
@@ -338,7 +364,7 @@ cdef class LossFunction:
 
         # Check optimality.
         if dmax < 1e-12:
-            return
+            return 0
 
         # Perform line search.
         step = 1
@@ -393,6 +419,8 @@ cdef class LossFunction:
         # Update solution
         for k in xrange(n_vectors):
             w[k, j] += d[k]
+
+        return 0
 
     cdef void derivatives_mc(self,
                              int j,
@@ -1032,8 +1060,10 @@ def _primal_cd_l1l2r(self,
                      int multiclass,
                      np.ndarray[int, ndim=1, mode='c'] index,
                      LossFunction loss,
+                     termination,
                      double C,
                      int max_iter,
+                     int shrinking,
                      RandomState rs,
                      double tol,
                      callback,
@@ -1041,11 +1071,19 @@ def _primal_cd_l1l2r(self,
 
     cdef int n_samples = X.get_n_samples()
     cdef int n_features = index.shape[0]
-    cdef Py_ssize_t n_vectors = w.shape[0]
+    cdef int n_vectors = w.shape[0]
 
     # Initialization
     cdef int t, s, i, j, k, n
     cdef int active_size = n_features
+    cdef double Lpmax_old = DBL_MAX
+    cdef double Lpmax_new
+    cdef double Lpmax_init
+    cdef double violation
+    cdef int check_convergence = termination == "convergence"
+    cdef int stop = 0
+    cdef int has_callback = callback is not None
+    cdef int shrink = 0
 
     cdef np.ndarray[double, ndim=1, mode='c'] g
     cdef np.ndarray[double, ndim=1, mode='c'] d
@@ -1071,7 +1109,10 @@ def _primal_cd_l1l2r(self,
 
         rs.shuffle(index[:active_size])
 
-        for s in xrange(active_size):
+        Lpmax_new = 0
+
+        s = 0
+        while s < active_size:
             # Select coordinate.
             j = index[s]
 
@@ -1079,16 +1120,61 @@ def _primal_cd_l1l2r(self,
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
             # Solve sub-problem.
-            loss.solve_l1l2(j, C, w, n_vectors,
-                            indices, data, n_nz,
-                            <int*>y.data, Y, multiclass,
-                            b, <double*>g.data, <double*>d.data,
-                            <double*>d_old.data, <double*>Z.data)
+            shrink = loss.solve_l1l2(j, C, w, n_vectors,
+                                     indices, data, n_nz,
+                                     <int*>y.data, Y, multiclass,
+                                     b, <double*>g.data, <double*>d.data,
+                                     <double*>d_old.data, <double*>Z.data,
+                                     Lpmax_old, &violation, shrinking)
+
+            # Update maximum absolute derivative.
+            Lpmax_new = max(Lpmax_new, violation)
+
+            # Check if need to shrink.
+            if shrink:
+                active_size -= 1
+                index[s], index[active_size] = index[active_size], index[s]
+                continue
+
+            # Callback
+            if has_callback and s % 100 == 0:
+                ret = callback(self)
+                if ret is not None:
+                    stop = 1
+                    break
 
             # Output progress.
             if verbose >= 1 and s % 100 == 0:
                 sys.stdout.write(".")
                 sys.stdout.flush()
+
+            s += 1
+        # end while active_size
+
+        if stop:
+            break
+
+        if t == 0:
+            Lpmax_init = Lpmax_new
+
+        if verbose:
+            print "\nActive size:", active_size
+
+        # Check convergence.
+        if check_convergence and Lpmax_new <= tol * Lpmax_init:
+            if active_size == n_features:
+                if verbose >= 1:
+                    print "\nConverged at iteration", t
+                break
+            else:
+                active_size = n_features
+                Lpmax_old = DBL_MAX
+                continue
+
+        Lpmax_old = Lpmax_new
+
+    if verbose >= 1:
+        print
 
 
 def _primal_cd_l2r(self,

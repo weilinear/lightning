@@ -132,7 +132,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                              self.coef_, self.errors_,
                              ds, y, Y, self.multiclass,
                              indices, self._get_loss(),
-                             self.C, self.max_iter, rs, self.tol,
+                             self.termination, self.C, self.max_iter,
+                             self.shrinking, rs, self.tol,
                              self.callback, self.verbose)
 
         if self.penalty == "l1":
