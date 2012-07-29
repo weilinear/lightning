@@ -64,7 +64,7 @@ def test_fit_rbf_binary_l1r_selection():
         acc = clf.score(bin_dense, bin_target)
         assert_true(acc >= 0.74)
         n_nz = np.sum(clf.coef_ != 0)
-        assert_true(n_nz <= 86)
+        assert_true(n_nz <= 102)
 
 
 def test_fit_rbf_multi():
@@ -73,6 +73,14 @@ def test_fit_rbf_multi():
     y_pred = clf.predict(mult_dense)
     acc = np.mean(y_pred == mult_target)
     assert_almost_equal(acc, 1.0)
+
+
+def test_l1r_shrinking():
+    for shrinking in (True, False):
+        clf = CDClassifier(C=0.5, penalty="l1", random_state=0,
+                           shrinking=shrinking)
+        clf.fit(bin_dense, bin_target)
+        assert_equal(clf.score(bin_dense, bin_target), 1.0)
 
 
 def test_warm_start_l1r():
@@ -374,7 +382,7 @@ def test_fit_squared_loss():
 
 def test_fit_squared_loss_l1():
     clf = CDClassifier(C=0.5, random_state=0, penalty="l1",
-                       loss="squared", max_iter=100)
+                       loss="squared", max_iter=100, shrinking=False)
     clf.fit(bin_dense, bin_target)
     assert_almost_equal(clf.score(bin_dense, bin_target), 0.985, 3)
     y = bin_target.copy()

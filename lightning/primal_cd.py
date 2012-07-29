@@ -43,9 +43,11 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
     def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
                  multiclass=False,
                  max_iter=50, tol=1e-3, termination="convergence",
+                 shrinking=True,
                  max_steps=30, sigma=0.01, beta=0.5,
                  kernel=None, gamma=0.1, coef0=1, degree=4, cache_mb=500,
-                 warm_start=False, debiasing=False, Cd=1.0, warm_debiasing=False,
+                 warm_start=False, debiasing=False, Cd=1.0,
+                 warm_debiasing=False,
                  selection="permute", search_size=60,
                  n_components=1000, components=None,
                  random_state=None, callback=None, verbose=0, n_jobs=1):
@@ -56,6 +58,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         self.max_iter = max_iter
         self.tol = tol
         self.termination = termination
+        self.shrinking = shrinking
         self.max_steps = max_steps
         self.sigma = sigma
         self.beta = beta
@@ -139,8 +142,9 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                                    indices, self._get_loss(),
                                    self.selection, self.search_size,
                                    self.termination, self.n_components,
-                                   self.C, self.max_iter, rs, self.tol,
-                                   self.callback, verbose=self.verbose)
+                                   self.C, self.max_iter, self.shrinking,
+                                   rs, self.tol, self.callback,
+                                   verbose=self.verbose)
 
         if self.penalty == "l2":
             for i in xrange(n_vectors):

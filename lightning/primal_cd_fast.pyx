@@ -153,7 +153,8 @@ cdef class LossFunction:
                       double *b,
                       double Lpmax_old,
                       double *violation,
-                      int *n_sv):
+                      int *n_sv,
+                      int shrinking):
         cdef double Lj_zero = 0
         cdef double Lp = 0
         cdef double Lpp = 0
@@ -175,14 +176,18 @@ cdef class LossFunction:
         Lp_n = Lp - 1
         violation[0] = 0
 
-        # Shrinking.
+        # Violation and shrinking.
         if w[j] == 0:
             if Lp_p < 0:
                 violation[0] = -Lp_p
             elif Lp_n > 0:
                 violation[0] = Lp_n
-            elif Lp_p > Lpmax_old / n_samples and Lp_n < -Lpmax_old / n_samples:
+            elif shrinking and \
+                 Lp_p > Lpmax_old / n_samples and \
+                 Lp_n < -Lpmax_old / n_samples:
                 # Shrink!
+                if self.verbose >=2:
+                    print "Shrink variable", j
                 return 1
         elif w[j] > 0:
             violation[0] = fabs(Lp_p)
@@ -897,6 +902,7 @@ def _primal_cd_l1r(self,
                    int n_components,
                    double C,
                    int max_iter,
+                   int shrinking,
                    RandomState rs,
                    double tol,
                    callback,
@@ -956,10 +962,10 @@ def _primal_cd_l1r(self,
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
             # Solve sub-problem.
-            loss.solve_l1(j, C, <double*>w.data, n_samples,
-                          indices, data, n_nz, <double*>col.data,
-                          <double*>y.data, <double*>b.data,
-                          Lpmax_old, &violation, &n_sv)
+            shrink = loss.solve_l1(j, C, <double*>w.data, n_samples,
+                                   indices, data, n_nz, <double*>col.data,
+                                   <double*>y.data, <double*>b.data,
+                                   Lpmax_old, &violation, &n_sv, shrinking)
 
             # Update maximum absolute derivative.
             Lpmax_new = max(Lpmax_new, violation)
