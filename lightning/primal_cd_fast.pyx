@@ -186,7 +186,7 @@ cdef class LossFunction:
                  Lp_p > Lpmax_old / n_samples and \
                  Lp_n < -Lpmax_old / n_samples:
                 # Shrink!
-                if self.verbose >= 2:
+                if self.verbose >= 3:
                     print "Shrink variable", j
                 return 1
         elif w[j] > 0:
@@ -334,7 +334,7 @@ cdef class LossFunction:
             elif shrinking and \
                  g_norm + Lpmax_old / nv <= 0:
                 # Shrink!
-                if self.verbose >= 2:
+                if self.verbose >= 3:
                     print "Shrink variable", j
                 return 1
         else:
