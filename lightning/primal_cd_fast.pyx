@@ -288,7 +288,7 @@ cdef class LossFunction:
         cdef double* y_ptr
         cdef double* b_ptr
         cdef double* Z_ptr
-        cdef double z_diff, g_norm, w_norm
+        cdef double z_diff, g_norm
         cdef double lmbda = 1.0
         cdef int nv = n_samples * n_vectors
 
@@ -315,16 +315,19 @@ cdef class LossFunction:
             Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
 
 
-        # Compute partial gradient norm.
+        # Compute partial gradient norm and regularization term.
         g_norm = 0
-        w_norm = 0
+        R_j = 0
+
         for k in xrange(n_vectors):
             g_norm += g[k] * g[k]
-            w_norm += w[k, j] * w[k, j]
+            R_j += w[k, j] * w[k, j]
+
         g_norm = sqrt(g_norm)
+        R_j = sqrt(R_j)
 
         # Violation and shrinking.
-        if w_norm == 0:
+        if R_j == 0:
             g_norm -= lmbda
             if g_norm > 0:
                 violation[0] = g_norm
@@ -344,17 +347,13 @@ cdef class LossFunction:
 
         # Project.
         scaling = 0
-        R_j = 0
         for k in xrange(n_vectors):
-            R_j += w[k, j] * w[k, j]
             scaling += d[k] * d[k]
 
         scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
 
         if scaling < 0:
             scaling = 0
-
-        R_j = sqrt(R_j)
 
         delta = 0
         dmax = -DBL_MAX
