@@ -93,7 +93,7 @@ cdef class LossFunction:
                         col, y, b, &Dj_z)
 
             if step == self.max_steps:
-                if self.verbose >= 2:
+                if self.verbose >= 2 and self.max_steps > 1:
                     print "Max steps reached during line search..."
                 break
 
@@ -233,7 +233,7 @@ cdef class LossFunction:
             self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
 
             if step == self.max_steps:
-                if self.verbose >= 2:
+                if self.verbose >= 2 and self.max_steps > 1:
                     print "Max steps reached during line search..."
                 break
 
@@ -391,7 +391,7 @@ cdef class LossFunction:
                     Z_ptr += n_samples
 
             if step == self.max_steps:
-                if self.verbose >= 2:
+                if self.verbose >= 2 and self.max_steps > 1:
                     print "Max steps reached during line search..."
                 break
 
