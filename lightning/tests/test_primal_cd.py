@@ -408,7 +408,7 @@ def test_l1l2_multiclass_log_loss():
         clf = CDClassifier(penalty="l1/l2", loss="log", multiclass=True,
                            max_iter=5, C=1.0, random_state=0)
         clf.fit(data, mult_target)
-        assert_almost_equal(clf.score(data, mult_target), 0.8733, 3)
+        assert_almost_equal(clf.score(data, mult_target), 0.8766, 3)
         df = clf.decision_function(data)
         sel = np.array([df[i, int(mult_target[i])] for i in xrange(df.shape[0])])
         df -= sel[:, np.newaxis]
@@ -419,9 +419,9 @@ def test_l1l2_multiclass_log_loss():
         clf = CDClassifier(penalty="l1/l2", loss="log", multiclass=True,
                            max_iter=5, C=0.3, random_state=0)
         clf.fit(data, mult_target)
-        assert_almost_equal(clf.score(data, mult_target), 0.8366, 3)
+        assert_almost_equal(clf.score(data, mult_target), 0.8566, 3)
         nz = np.sum(clf.coef_ != 0)
-        assert_equal(nz, 243)
+        assert_equal(nz, 213)
         assert_true(nz % 3 == 0) # should be a multiple of n_classes
 
 
@@ -447,7 +447,7 @@ def test_l1l2_multiclass_squared_hinge_loss():
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.83, 3)
         nz = np.sum(clf.coef_ != 0)
-        assert_equal(nz, 219)
+        assert_equal(nz, 213)
         assert_true(nz % 3 == 0) # should be a multiple of n_classes
 
 
@@ -479,7 +479,7 @@ def test_l1l2_multi_task_squared_hinge_loss():
     clf.fit(mult_dense, mult_target)
     assert_almost_equal(clf.score(mult_dense, mult_target), 0.8266, 3)
     nz = np.sum(clf.coef_ != 0)
-    assert_equal(nz, 240)
+    assert_equal(nz, 231)
 
 
 def test_l1l2_multi_task_log_loss():

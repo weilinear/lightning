@@ -288,7 +288,7 @@ cdef class LossFunction:
         cdef double* y_ptr
         cdef double* b_ptr
         cdef double* Z_ptr
-        cdef double z_diff, g_norm
+        cdef double z_diff, g_norm, w_norm
         cdef double lmbda = 1.0
         cdef int nv = n_samples * n_vectors
 
@@ -317,17 +317,19 @@ cdef class LossFunction:
 
         # Compute partial gradient norm.
         g_norm = 0
+        w_norm = 0
         for k in xrange(n_vectors):
             g_norm += g[k] * g[k]
+            w_norm += w[k, j] * w[k, j]
         g_norm = sqrt(g_norm)
 
         # Violation and shrinking.
-        if g_norm == 0:
+        if w_norm == 0:
             g_norm -= lmbda
             if g_norm > 0:
                 violation[0] = g_norm
             elif shrinking and \
-                 g_norm + Lpmax_old / nv < 0:
+                 g_norm + Lpmax_old / nv <= 0:
                 # Shrink!
                 if self.verbose >= 2:
                     print "Shrink variable", j
@@ -1029,6 +1031,9 @@ def _primal_cd_l1r(self,
 
         if t == 0:
             Lpmax_init = Lpmax_new
+
+        if verbose:
+            print "\nActive size:", active_size
 
         # Check convergence.
         if check_convergence and Lpmax_new <= tol * Lpmax_init:
