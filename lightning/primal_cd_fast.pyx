@@ -93,7 +93,7 @@ cdef class LossFunction:
                         col, y, b, &Dj_z)
 
             if step == self.max_steps:
-                if self.verbose >= 2:
+                if self.verbose >= 2 and self.max_steps > 1:
                     print "Max steps reached during line search..."
                 break
 
@@ -186,7 +186,7 @@ cdef class LossFunction:
                  Lp_p > Lpmax_old / n_samples and \
                  Lp_n < -Lpmax_old / n_samples:
                 # Shrink!
-                if self.verbose >= 2:
+                if self.verbose >= 3:
                     print "Shrink variable", j
                 return 1
         elif w[j] > 0:
@@ -233,7 +233,7 @@ cdef class LossFunction:
             self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
 
             if step == self.max_steps:
-                if self.verbose >= 2:
+                if self.verbose >= 2 and self.max_steps > 1:
                     print "Max steps reached during line search..."
                 break
 
@@ -315,21 +315,26 @@ cdef class LossFunction:
             Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
 
 
-        # Compute partial gradient norm.
+        # Compute partial gradient norm and regularization term.
         g_norm = 0
+        R_j = 0
+
         for k in xrange(n_vectors):
             g_norm += g[k] * g[k]
+            R_j += w[k, j] * w[k, j]
+
         g_norm = sqrt(g_norm)
+        R_j = sqrt(R_j)
 
         # Violation and shrinking.
-        if g_norm == 0:
+        if R_j == 0:
             g_norm -= lmbda
             if g_norm > 0:
                 violation[0] = g_norm
             elif shrinking and \
-                 g_norm + Lpmax_old / nv < 0:
+                 g_norm + Lpmax_old / nv <= 0:
                 # Shrink!
-                if self.verbose >= 2:
+                if self.verbose >= 3:
                     print "Shrink variable", j
                 return 1
         else:
@@ -342,17 +347,13 @@ cdef class LossFunction:
 
         # Project.
         scaling = 0
-        R_j = 0
         for k in xrange(n_vectors):
-            R_j += w[k, j] * w[k, j]
             scaling += d[k] * d[k]
 
         scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
 
         if scaling < 0:
             scaling = 0
-
-        R_j = sqrt(R_j)
 
         delta = 0
         dmax = -DBL_MAX
@@ -390,7 +391,7 @@ cdef class LossFunction:
                     Z_ptr += n_samples
 
             if step == self.max_steps:
-                if self.verbose >= 2:
+                if self.verbose >= 2 and self.max_steps > 1:
                     print "Max steps reached during line search..."
                 break
 
@@ -1029,6 +1030,9 @@ def _primal_cd_l1r(self,
 
         if t == 0:
             Lpmax_init = Lpmax_new
+
+        if verbose:
+            print "\nActive size:", active_size
 
         # Check convergence.
         if check_convergence and Lpmax_new <= tol * Lpmax_init:
