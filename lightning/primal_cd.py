@@ -108,7 +108,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         # Create label transformers
         reencode = self.penalty == "l1/l2"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
-        Y = np.asfortranarray(self.label_binarizer_.transform(y))
+        Y = np.asfortranarray(self.label_binarizer_.transform(y),
+                              dtype=np.float64)
 
         # Initialize coefficients
         if self.warm_start and self.coef_ is not None:
@@ -190,6 +191,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
 def C_lower_bound(X, y, kernel=None, search_size=None, random_state=None,
                   **kernel_params):
     Y = LabelBinarizer(neg_label=-1, pos_label=1).fit_transform(y)
+    Y = np.asfortranarray(Y, dtype=np.float64)
 
     if kernel is None:
         den = np.max(np.abs(np.dot(Y.T, X)))

@@ -1290,7 +1290,7 @@ def _primal_cd_l2r(self,
 
 
 cpdef _C_lower_bound_kernel(KernelDataset kds,
-                            np.ndarray[double, ndim=2, mode='c'] Y,
+                            np.ndarray[double, ndim=2, mode='fortran'] Y,
                             search_size=None,
                             random_state=None):
 

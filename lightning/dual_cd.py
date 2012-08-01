@@ -45,7 +45,8 @@ class DualSVC(BaseClassifier, ClassifierMixin):
         rs = self._get_random_state()
 
         self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
-        Y = self.label_binarizer_.fit_transform(y)
+        Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
+                              dtype=np.float64)
         n_vectors = Y.shape[1]
 
         if sp.issparse(X):

@@ -45,7 +45,8 @@ class LaSVM(BaseClassifier, ClassifierMixin):
         rs = self._get_random_state()
 
         self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
-        Y = np.asfortranarray(self.label_binarizer_.fit_transform(y))
+        Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
+                              dtype=np.float64)
         self.classes_ = self.label_binarizer_.classes_.astype(np.int32)
         n_vectors = Y.shape[1]
 

@@ -85,7 +85,8 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
 
         if n_vectors == 1 or self.multiclass == "one-vs-rest":
-            Y = self.label_binarizer_.transform(y)
+            Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
+                                  dtype=np.float64)
             for i in xrange(n_vectors):
                 _binary_sgd(self,
                             self.coef_, self.intercept_, i,
