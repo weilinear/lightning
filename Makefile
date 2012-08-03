@@ -14,7 +14,8 @@ inplace: cython
 cython: $(CSRC)
 
 clean:
-	rm -f lightning/*.c lightning/*.cpp lightning/*.so lightning/*.html lightning/*.pyc
+	rm -f lightning/*.c lightning/*.so lightning/*.html lightning/*.pyc
+	rm -f `find lightning -name "*.cpp"`
 
 %.cpp: %.pyx
 	$(CYTHON) --cplus $<
