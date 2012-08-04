@@ -922,6 +922,8 @@ def _primal_cd_l1r(self,
     cdef int shrink = 0
     cdef np.ndarray[double, ndim=1, mode='c'] col
     col = np.zeros(n_samples, dtype=np.float64)
+    cdef int* index_ptr = <int*>index.data
+    cdef double* b_ptr = <double*>b.data
 
     # Data pointers
     cdef double* data
@@ -949,8 +951,8 @@ def _primal_cd_l1r(self,
             if permute:
                 j = index[s]
             else:
-                j = select_sv_precomputed(index, search_size,
-                                          active_size, select_method, b, rs)
+                j = select_sv_precomputed(index_ptr, search_size,
+                                          active_size, select_method, b_ptr, rs)
 
             # Retrieve column.
             X.get_column_ptr(j, &indices, &data, &n_nz)
@@ -1179,6 +1181,8 @@ def _primal_cd_l2r(self,
     cdef int permute = selection == "permute"
     cdef int stop = 0
     cdef int n_sv = 0
+    cdef int* index_ptr = <int*>index.data
+    cdef double* b_ptr = <double*>b.data
 
     # Data pointers
     cdef double* data
@@ -1200,8 +1204,8 @@ def _primal_cd_l2r(self,
             if permute:
                 j = index[s]
             else:
-                j = select_sv_precomputed(index, search_size,
-                                         n_features, select_method, b, rs)
+                j = select_sv_precomputed(index_ptr, search_size,
+                                          n_features, select_method, b_ptr, rs)
 
             # Retrieve column.
             X.get_column_ptr(j, &indices, &data, &n_nz)
