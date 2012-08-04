@@ -52,6 +52,8 @@ class BaseClassifier(BaseEstimator):
         if reencode:
             self.label_encoder_ = LabelEncoder()
             y = self.label_encoder_.fit_transform(y).astype(np.int32)
+        else:
+            y = y.astype(np.int32)
 
         self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
         self.label_binarizer_.fit(y)

@@ -11,9 +11,7 @@ from sklearn.utils import check_random_state
 from .base import BaseClassifier
 
 from .dataset_fast import KernelDataset
-from .primal_cd_fast import _primal_cd_l1l2r
-from .primal_cd_fast import _primal_cd_l2r
-from .primal_cd_fast import _primal_cd_l1r
+from .primal_cd_fast import _primal_cd
 from .primal_cd_fast import _C_lower_bound_kernel
 
 from .primal_cd_fast import Squared
@@ -129,34 +127,24 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
 
         # Learning
         if self.penalty == "l1/l2":
-            _primal_cd_l1l2r(self,
-                             self.coef_, self.errors_,
-                             ds, y, Y, self.multiclass,
-                             indices, self._get_loss(),
-                             self.termination, self.C, self.max_iter,
-                             self.shrinking, rs, self.tol,
-                             self.callback, self.verbose)
+            _primal_cd(self, self.coef_, self.errors_,
+                       ds, y, Y, -1, self.multiclass,
+                       indices, 12, self._get_loss(),
+                       self.selection, self.search_size,
+                       self.termination, self.n_components,
+                       self.C, self.max_iter, self.shrinking,
+                       rs, self.tol, self.callback, self.verbose)
 
-        if self.penalty == "l1":
-            for i in xrange(n_vectors):
-                    _primal_cd_l1r(self, self.coef_[i], self.errors_[i],
-                                   ds, Y[:, i],
-                                   indices, self._get_loss(),
-                                   self.selection, self.search_size,
-                                   self.termination, self.n_components,
-                                   self.C, self.max_iter, self.shrinking,
-                                   rs, self.tol, self.callback,
-                                   verbose=self.verbose)
-
-        if self.penalty == "l2":
-            for i in xrange(n_vectors):
-                _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               ds, Y[:, i],
-                               indices, self._get_loss(),
-                               self.selection, self.search_size,
-                               self.termination, self.n_components,
-                               self.C, self.max_iter, rs, self.tol,
-                               self.callback, verbose=self.verbose)
+        elif self.penalty in ("l1", "l2"):
+            penalty = 1 if self.penalty == "l1" else 2
+            for k in xrange(n_vectors):
+                _primal_cd(self, self.coef_, self.errors_,
+                           ds, y, Y, k, False,
+                           indices, penalty, self._get_loss(),
+                           self.selection, self.search_size,
+                           self.termination, self.n_components,
+                           self.C, self.max_iter, self.shrinking,
+                           rs, self.tol, self.callback, self.verbose)
 
         if self.debiasing:
             nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
@@ -166,14 +154,14 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                 self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
                 self.errors_ = np.ones((n_vectors, n_features), dtype=np.float64)
 
-            for i in xrange(n_vectors):
-                _primal_cd_l2r(self, self.coef_[i], self.errors_[i],
-                               ds, Y[:, i],
-                               indices, self._get_loss(),
-                               "permute", self.search_size,
-                               "convergence", self.n_components,
-                               self.Cd, self.max_iter, rs, self.tol,
-                               self.callback, verbose=self.verbose)
+            for k in xrange(n_vectors):
+                _primal_cd(self, self.coef_, self.errors_,
+                           ds, y, Y, k, False,
+                           indices, 2, self._get_loss(),
+                           "permute", self.search_size,
+                           "convergence", self.n_components,
+                           self.Cd, self.max_iter, self.shrinking,
+                           rs, self.tol, self.callback, self.verbose)
 
         nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
         self.support_indices_ = np.arange(n_features, dtype=np.int32)[nz]

@@ -883,69 +883,90 @@ cdef class Log(LossFunction):
         L_new[0] *= C
 
 
-def _primal_cd_l1r(self,
-                   np.ndarray[double, ndim=1, mode='c'] w,
-                   np.ndarray[double, ndim=1, mode='c'] b,
-                   Dataset X,
-                   np.ndarray[double, ndim=1] y,
-                   np.ndarray[int, ndim=1, mode='c'] index,
-                   LossFunction loss,
-                   selection,
-                   int search_size,
-                   termination,
-                   int n_components,
-                   double C,
-                   int max_iter,
-                   int shrinking,
-                   RandomState rs,
-                   double tol,
-                   callback,
-                   int verbose):
+def _primal_cd(self,
+               np.ndarray[double, ndim=2, mode='c'] w,
+               np.ndarray[double, ndim=2, mode='c'] b,
+               Dataset X,
+               np.ndarray[int, ndim=1] y,
+               np.ndarray[double, ndim=2, mode='fortran'] Y,
+               int k,
+               int multiclass,
+               np.ndarray[int, ndim=1, mode='c'] index,
+               int penalty,
+               LossFunction loss,
+               selection,
+               int search_size,
+               termination,
+               int n_components,
+               double C,
+               int max_iter,
+               int shrinking,
+               RandomState rs,
+               double tol,
+               callback,
+               int verbose):
 
-    cdef Py_ssize_t n_samples = X.get_n_samples()
-    cdef Py_ssize_t n_features = index.shape[0]
+    cdef int n_samples = X.get_n_samples()
+    cdef int n_features = index.shape[0]
+    cdef int n_vectors = w.shape[0]
 
     # Initialization
-    cdef int j, s, t
+    cdef int t, s, i, j, n
     cdef int active_size = n_features
     cdef double Lpmax_old = DBL_MAX
     cdef double Lpmax_new
     cdef double Lpmax_init
+    cdef double Dpmax, Dp
     cdef double violation
-    cdef int check_n_sv = termination == "n_components"
     cdef int check_convergence = termination == "convergence"
-    cdef int stop = 0
+    cdef int check_n_sv = termination == "n_components"
     cdef int select_method = get_select_method(selection)
     cdef int permute = selection == "permute"
+    cdef int stop = 0
     cdef int has_callback = callback is not None
-    cdef int n_sv = 0
     cdef int shrink = 0
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    col = np.zeros(n_samples, dtype=np.float64)
     cdef int* index_ptr = <int*>index.data
-    cdef double* b_ptr = <double*>b.data
+    cdef double* b_ptr
+    cdef double* y_ptr
+    cdef double* w_ptr
+    cdef int n_sv = 0
+
+    cdef np.ndarray[double, ndim=1, mode='c'] g
+    cdef np.ndarray[double, ndim=1, mode='c'] d
+    cdef np.ndarray[double, ndim=1, mode='c'] d_old
+    cdef np.ndarray[double, ndim=2, mode='c'] Z
+
+    if k == -1:
+        g = np.zeros(n_vectors, dtype=np.float64)
+        d = np.zeros(n_vectors, dtype=np.float64)
+        d_old = np.zeros(n_vectors, dtype=np.float64)
+        if multiclass:
+            Z = np.zeros((n_samples, 1), dtype=np.float64)
+        else:
+            Z = np.zeros((n_vectors, n_samples), dtype=np.float64)
+
+        b_ptr = <double*>b.data
+    else:
+        b_ptr = <double*>b.data + k * n_samples
+        y_ptr = <double*>Y.data + k * n_samples
+        w_ptr = <double*>w.data + k * n_features
+        Z = np.zeros((n_samples, 1), dtype=np.float64)
 
     # Data pointers
     cdef double* data
     cdef int* indices
     cdef int n_nz
 
-    # FIXME: would be better to store the support indices in the class.
-    for j in xrange(n_features):
-        if w[j] != 0:
-            n_sv += 1
-
     for t in xrange(max_iter):
         if verbose >= 1:
             print "\nIteration", t
 
-        Lpmax_new = 0
+        rs.shuffle(index[:active_size])
 
-        if permute:
-            rs.shuffle(index[:active_size])
+        Lpmax_new = 0
+        Dpmax = 0
 
         s = 0
-
         while s < active_size:
             # Select coordinate.
             if permute:
@@ -958,10 +979,24 @@ def _primal_cd_l1r(self,
             X.get_column_ptr(j, &indices, &data, &n_nz)
 
             # Solve sub-problem.
-            shrink = loss.solve_l1(j, C, <double*>w.data, n_samples,
-                                   indices, data, n_nz, <double*>col.data,
-                                   <double*>y.data, <double*>b.data,
-                                   Lpmax_old, &violation, &n_sv, shrinking)
+            if penalty == 1:
+                shrink = loss.solve_l1(j, C, w_ptr, n_samples,
+                                       indices, data, n_nz, <double*>Z.data,
+                                       y_ptr, b_ptr,
+                                       Lpmax_old, &violation, &n_sv, shrinking)
+            elif penalty == 12:
+                shrink = loss.solve_l1l2(j, C, w, n_vectors,
+                                         indices, data, n_nz,
+                                         <int*>y.data, Y, multiclass,
+                                         b, <double*>g.data, <double*>d.data,
+                                         <double*>d_old.data, <double*>Z.data,
+                                         Lpmax_old, &violation, shrinking)
+            elif penalty == 2:
+                loss.solve_l2(j, C, w_ptr, indices, data, n_nz,
+                              <double*>Z.data, y_ptr, b_ptr, &Dp)
+                Dpmax = max(Dpmax, fabs(Dp))
+                if w_ptr[j] != 0:
+                    n_sv += 1
 
             # Update maximum absolute derivative.
             Lpmax_new = max(Lpmax_new, violation)
@@ -990,136 +1025,6 @@ def _primal_cd_l1r(self,
                 sys.stdout.flush()
 
             s += 1
-        # while active_size
-
-        if stop:
-            break
-
-        if t == 0:
-            Lpmax_init = Lpmax_new
-
-        if verbose:
-            print "\nActive size:", active_size
-
-        # Check convergence.
-        if check_convergence and Lpmax_new <= tol * Lpmax_init:
-            if active_size == n_features:
-                if verbose >= 1:
-                    print "\nConverged at iteration", t
-                break
-            else:
-                active_size = n_features
-                Lpmax_old = DBL_MAX
-                continue
-
-        Lpmax_old = Lpmax_new
-
-    # end for while max_iter
-
-    if verbose >= 1:
-        print
-
-    return w
-
-
-def _primal_cd_l1l2r(self,
-                     np.ndarray[double, ndim=2, mode='c'] w,
-                     np.ndarray[double, ndim=2, mode='c'] b,
-                     Dataset X,
-                     np.ndarray[int, ndim=1] y,
-                     np.ndarray[double, ndim=2, mode='fortran'] Y,
-                     int multiclass,
-                     np.ndarray[int, ndim=1, mode='c'] index,
-                     LossFunction loss,
-                     termination,
-                     double C,
-                     int max_iter,
-                     int shrinking,
-                     RandomState rs,
-                     double tol,
-                     callback,
-                     int verbose):
-
-    cdef int n_samples = X.get_n_samples()
-    cdef int n_features = index.shape[0]
-    cdef int n_vectors = w.shape[0]
-
-    # Initialization
-    cdef int t, s, i, j, k, n
-    cdef int active_size = n_features
-    cdef double Lpmax_old = DBL_MAX
-    cdef double Lpmax_new
-    cdef double Lpmax_init
-    cdef double violation
-    cdef int check_convergence = termination == "convergence"
-    cdef int stop = 0
-    cdef int has_callback = callback is not None
-    cdef int shrink = 0
-
-    cdef np.ndarray[double, ndim=1, mode='c'] g
-    cdef np.ndarray[double, ndim=1, mode='c'] d
-    cdef np.ndarray[double, ndim=1, mode='c'] d_old
-    cdef np.ndarray[double, ndim=2, mode='c'] Z
-
-    g = np.zeros(n_vectors, dtype=np.float64)
-    d = np.zeros(n_vectors, dtype=np.float64)
-    d_old = np.zeros(n_vectors, dtype=np.float64)
-    if multiclass:
-        Z = np.zeros((n_samples, 1), dtype=np.float64)
-    else:
-        Z = np.zeros((n_vectors, n_samples), dtype=np.float64)
-
-    # Data pointers
-    cdef double* data
-    cdef int* indices
-    cdef int n_nz
-
-    for t in xrange(max_iter):
-        if verbose >= 1:
-            print "\nIteration", t
-
-        rs.shuffle(index[:active_size])
-
-        Lpmax_new = 0
-
-        s = 0
-        while s < active_size:
-            # Select coordinate.
-            j = index[s]
-
-            # Retrieve column.
-            X.get_column_ptr(j, &indices, &data, &n_nz)
-
-            # Solve sub-problem.
-            shrink = loss.solve_l1l2(j, C, w, n_vectors,
-                                     indices, data, n_nz,
-                                     <int*>y.data, Y, multiclass,
-                                     b, <double*>g.data, <double*>d.data,
-                                     <double*>d_old.data, <double*>Z.data,
-                                     Lpmax_old, &violation, shrinking)
-
-            # Update maximum absolute derivative.
-            Lpmax_new = max(Lpmax_new, violation)
-
-            # Check if need to shrink.
-            if shrink:
-                active_size -= 1
-                index[s], index[active_size] = index[active_size], index[s]
-                continue
-
-            # Callback
-            if has_callback and s % 100 == 0:
-                ret = callback(self)
-                if ret is not None:
-                    stop = 1
-                    break
-
-            # Output progress.
-            if verbose >= 1 and s % 100 == 0:
-                sys.stdout.write(".")
-                sys.stdout.flush()
-
-            s += 1
         # end while active_size
 
         if stop:
@@ -1132,134 +1037,27 @@ def _primal_cd_l1l2r(self,
             print "\nActive size:", active_size
 
         # Check convergence.
-        if check_convergence and Lpmax_new <= tol * Lpmax_init:
-            if active_size == n_features:
-                if verbose >= 1:
-                    print "\nConverged at iteration", t
-                break
+        if check_convergence:
+            if penalty == 2:
+                if Dpmax < tol:
+                    if verbose >= 1:
+                        print "\nConverged at iteration", t
+                    break
             else:
-                active_size = n_features
-                Lpmax_old = DBL_MAX
-                continue
+                if Lpmax_new <= tol * Lpmax_init:
+                    if active_size == n_features:
+                        if verbose >= 1:
+                            print "\nConverged at iteration", t
+                        break
+                    else:
+                        active_size = n_features
+                        Lpmax_old = DBL_MAX
+                        continue
 
         Lpmax_old = Lpmax_new
 
     if verbose >= 1:
         print
-
-
-def _primal_cd_l2r(self,
-                   np.ndarray[double, ndim=1, mode='c'] w,
-                   np.ndarray[double, ndim=1, mode='c'] b,
-                   Dataset X,
-                   np.ndarray[double, ndim=1] y,
-                   np.ndarray[int, ndim=1, mode='c'] index,
-                   LossFunction loss,
-                   selection,
-                   int search_size,
-                   termination,
-                   int n_components,
-                   double C,
-                   int max_iter,
-                   RandomState rs,
-                   double tol,
-                   callback,
-                   int verbose):
-
-    cdef int n_samples = X.get_n_samples()
-    cdef int n_features = index.shape[0]
-
-    # Initialization
-    cdef int i, j, s, t
-    cdef double Dp, Dpmax
-    cdef np.ndarray[double, ndim=1, mode='c'] col
-    col = np.zeros(n_samples, dtype=np.float64)
-    cdef int check_n_sv = termination == "n_components"
-    cdef int check_convergence = termination == "convergence"
-    cdef int has_callback = callback is not None
-    cdef int select_method = get_select_method(selection)
-    cdef int permute = selection == "permute"
-    cdef int stop = 0
-    cdef int n_sv = 0
-    cdef int* index_ptr = <int*>index.data
-    cdef double* b_ptr = <double*>b.data
-
-    # Data pointers
-    cdef double* data
-    cdef int* indices
-    cdef int n_nz
-
-
-    for t in xrange(max_iter):
-        if verbose >= 1:
-            print "\nIteration", t
-
-        Dpmax = 0
-
-        if permute:
-            rs.shuffle(index)
-
-        for s in xrange(n_features):
-            # Select coordinate.
-            if permute:
-                j = index[s]
-            else:
-                j = select_sv_precomputed(index_ptr, search_size,
-                                          n_features, select_method, b_ptr, rs)
-
-            # Retrieve column.
-            X.get_column_ptr(j, &indices, &data, &n_nz)
-
-            # Solve sub-problem.
-            loss.solve_l2(j,
-                          C,
-                          <double*>w.data,
-                          indices, data, n_nz,
-                          <double*>col.data,
-                          <double*>y.data,
-                          <double*>b.data,
-                          &Dp)
-
-            # Update maximum absolute derivative.
-            if fabs(Dp) > Dpmax:
-                Dpmax = fabs(Dp)
-
-            if w[j] != 0:
-                n_sv += 1
-
-            # Exit if necessary.
-            if check_n_sv and n_sv == n_components:
-                stop = 1
-                break
-
-            # Callback
-            if has_callback and s % 100 == 0:
-                ret = callback(self)
-                if ret is not None:
-                    stop = 1
-                    break
-
-            # Output progress.
-            if verbose >= 1 and s % 100 == 0:
-                sys.stdout.write(".")
-                sys.stdout.flush()
-        # end for (iterate over features)
-
-        if stop:
-            break
-
-        # Check convergence.
-        if check_convergence and Dpmax < tol:
-            if verbose >= 1:
-                print "\nConverged at iteration", t
-            break
-
-    # for iterations
-
-    if verbose >= 1:
-        print
-
-    return w
 
 
 cpdef _C_lower_bound_kernel(KernelDataset kds,
