@@ -133,7 +133,7 @@ cdef class LossFunction:
                       double *col,
                       double *y,
                       double *b,
-                      double Lpmax_old,
+                      double violation_old,
                       double *violation,
                       int *n_sv,
                       int shrinking):
@@ -164,8 +164,8 @@ cdef class LossFunction:
             elif Lp_n > 0:
                 violation[0] = Lp_n
             elif shrinking and \
-                 Lp_p > Lpmax_old / n_samples and \
-                 Lp_n < -Lpmax_old / n_samples:
+                 Lp_p > violation_old / n_samples and \
+                 Lp_n < -violation_old / n_samples:
                 # Shrink!
                 if self.verbose >= 3:
                     print "Shrink variable", j
@@ -247,7 +247,7 @@ cdef class LossFunction:
                         double *d,
                         double *d_old,
                         double* Z,
-                        double Lpmax_old,
+                        double violation_old,
                         double *violation,
                         int shrinking):
 
@@ -303,7 +303,7 @@ cdef class LossFunction:
             if g_norm > 0:
                 violation[0] = g_norm
             elif shrinking and \
-                 g_norm + Lpmax_old / nv <= 0:
+                 g_norm + violation_old / nv <= 0:
                 # Shrink!
                 if self.verbose >= 3:
                     print "Shrink variable", j
@@ -884,7 +884,7 @@ def _primal_cd(self,
                np.ndarray[double, ndim=2, mode='fortran'] Y,
                int k,
                int multiclass,
-               np.ndarray[int, ndim=1, mode='c'] index,
+               np.ndarray[int, ndim=1, mode='c'] active_set,
                int penalty,
                LossFunction loss,
                selection,
@@ -900,15 +900,15 @@ def _primal_cd(self,
                int verbose):
 
     cdef int n_samples = X.get_n_samples()
-    cdef int n_features = index.shape[0]
+    cdef int n_features = active_set.shape[0]
     cdef int n_vectors = w.shape[0]
 
     # Initialization
     cdef int t, s, i, j, n
     cdef int active_size = n_features
-    cdef double Lpmax_old = DBL_MAX
-    cdef double Lpmax_new
-    cdef double Lpmax_init
+    cdef double violation_old = DBL_MAX
+    cdef double violation_new
+    cdef double violation_init
     cdef double Dpmax, Dp
     cdef double violation
     cdef int check_convergence = termination == "convergence"
@@ -918,7 +918,7 @@ def _primal_cd(self,
     cdef int stop = 0
     cdef int has_callback = callback is not None
     cdef int shrink = 0
-    cdef int* index_ptr = <int*>index.data
+    cdef int* active_set_ptr = <int*>active_set.data
     cdef double* b_ptr
     cdef double* y_ptr
     cdef double* w_ptr
@@ -927,23 +927,23 @@ def _primal_cd(self,
     cdef np.ndarray[double, ndim=1, mode='c'] g
     cdef np.ndarray[double, ndim=1, mode='c'] d
     cdef np.ndarray[double, ndim=1, mode='c'] d_old
-    cdef np.ndarray[double, ndim=2, mode='c'] Z
+    cdef np.ndarray[double, ndim=2, mode='c'] buf
 
     if k == -1:
         g = np.zeros(n_vectors, dtype=np.float64)
         d = np.zeros(n_vectors, dtype=np.float64)
         d_old = np.zeros(n_vectors, dtype=np.float64)
         if multiclass:
-            Z = np.zeros((n_samples, 1), dtype=np.float64)
+            buf = np.zeros((n_samples, 1), dtype=np.float64)
         else:
-            Z = np.zeros((n_vectors, n_samples), dtype=np.float64)
+            buf = np.zeros((n_vectors, n_samples), dtype=np.float64)
 
         b_ptr = <double*>b.data
     else:
         b_ptr = <double*>b.data + k * n_samples
         y_ptr = <double*>Y.data + k * n_samples
         w_ptr = <double*>w.data + k * n_features
-        Z = np.zeros((n_samples, 1), dtype=np.float64)
+        buf = np.zeros((n_samples, 1), dtype=np.float64)
 
     # Data pointers
     cdef double* data
@@ -954,18 +954,18 @@ def _primal_cd(self,
         if verbose >= 1:
             print "\nIteration", t
 
-        rs.shuffle(index[:active_size])
+        rs.shuffle(active_set[:active_size])
 
-        Lpmax_new = 0
+        violation_new = 0
         Dpmax = 0
 
         s = 0
         while s < active_size:
             # Select coordinate.
             if permute:
-                j = index[s]
+                j = active_set[s]
             else:
-                j = select_sv_precomputed(index_ptr, search_size,
+                j = select_sv_precomputed(active_set_ptr, search_size,
                                           active_size, select_method, b_ptr, rs)
 
             # Retrieve column.
@@ -974,30 +974,31 @@ def _primal_cd(self,
             # Solve sub-problem.
             if penalty == 1:
                 shrink = loss.solve_l1(j, C, w_ptr, n_samples,
-                                       indices, data, n_nz, <double*>Z.data,
-                                       y_ptr, b_ptr,
-                                       Lpmax_old, &violation, &n_sv, shrinking)
+                                       indices, data, n_nz, <double*>buf.data,
+                                       y_ptr, b_ptr, violation_old,
+                                       &violation, &n_sv, shrinking)
             elif penalty == 12:
                 shrink = loss.solve_l1l2(j, C, w, n_vectors,
                                          indices, data, n_nz,
                                          <int*>y.data, Y, multiclass,
                                          b, <double*>g.data, <double*>d.data,
-                                         <double*>d_old.data, <double*>Z.data,
-                                         Lpmax_old, &violation, shrinking)
+                                         <double*>d_old.data, <double*>buf.data,
+                                         violation_old, &violation, shrinking)
             elif penalty == 2:
                 loss.solve_l2(j, C, w_ptr, indices, data, n_nz,
-                              <double*>Z.data, y_ptr, b_ptr, &Dp)
+                              <double*>buf.data, y_ptr, b_ptr, &Dp)
                 Dpmax = max(Dpmax, fabs(Dp))
                 if w_ptr[j] != 0:
                     n_sv += 1
 
             # Update maximum absolute derivative.
-            Lpmax_new = max(Lpmax_new, violation)
+            violation_new = max(violation_new, violation)
 
             # Check if need to shrink.
             if shrink:
                 active_size -= 1
-                index[s], index[active_size] = index[active_size], index[s]
+                active_set[s], active_set[active_size] = \
+                    active_set[active_size], active_set[s]
                 continue
 
             # Exit if necessary.
@@ -1024,7 +1025,7 @@ def _primal_cd(self,
             break
 
         if t == 0:
-            Lpmax_init = Lpmax_new
+            violation_init = violation_new
 
         if verbose:
             print "\nActive size:", active_size
@@ -1037,17 +1038,17 @@ def _primal_cd(self,
                         print "\nConverged at iteration", t
                     break
             else:
-                if Lpmax_new <= tol * Lpmax_init:
+                if violation_new <= tol * violation_init:
                     if active_size == n_features:
                         if verbose >= 1:
                             print "\nConverged at iteration", t
                         break
                     else:
                         active_size = n_features
-                        Lpmax_old = DBL_MAX
+                        violation_old = DBL_MAX
                         continue
 
-        Lpmax_old = Lpmax_new
+        violation_old = violation_new
 
     if verbose >= 1:
         print
