@@ -54,19 +54,16 @@ cdef class LossFunction:
                        double *b,
                        double *Dp):
 
-        cdef double bound, Dpp, Dj_zero, z, d
+        cdef double Dpp, Dj_zero, z, d
         cdef int i, ii, step
         cdef double z_diff, z_old, Dj_z, cond
 
         # Compute derivatives
         self.derivatives(j, C, indices, data, n_nz, col, y, b,
-                         Dp, &Dpp, &Dj_zero, &bound)
+                         Dp, &Dpp, &Dj_zero)
 
         Dp[0] = w[j] + Dp[0]
         Dpp = 1 + Dpp
-
-        if bound != 0:
-            bound = (2 * C * bound + 1) / 2.0 + self.sigma
 
         if fabs(Dp[0]/Dpp) <= 1e-12:
             return
@@ -80,13 +77,6 @@ cdef class LossFunction:
         step = 1
         while True:
             z_diff = z_old - z
-
-            # lambda <= Dpp/bound is equivalent to Dp/z <= -bound
-            if bound > 0 and Dp[0]/z + bound <= 0:
-                for ii in xrange(n_nz):
-                    i = indices[ii]
-                    b[i] += z_diff * col[i]
-                break
 
             # Update old predictions
             self.update(j, z_diff, C, indices, data, n_nz,
@@ -121,8 +111,7 @@ cdef class LossFunction:
                           double *b,
                           double *Lp,
                           double *Lpp,
-                          double *L,
-                          double *bound):
+                          double *L):
         raise NotImplementedError()
 
     cdef void update(self,
@@ -167,9 +156,8 @@ cdef class LossFunction:
 
         # Compute derivatives
         self.derivatives(j, C, indices, data, n_nz, col, y, b,
-                         &Lp, &Lpp, &Lj_zero, &xj_sq)
+                         &Lp, &Lpp, &Lj_zero)
 
-        xj_sq *= C
         Lpp = max(Lpp, 1e-12)
 
         Lp_p = Lp + 1
@@ -218,16 +206,6 @@ cdef class LossFunction:
             # Reversed because of the minus in b[i] = 1 - y_i w^T x_i.
             z_diff = z_old - z
             cond = fabs(w[j] + z) - wj_abs - self.sigma * delta
-
-            appxcond = xj_sq * z * z + Lp * z + cond
-
-            # Avoid line search if possible.
-            if xj_sq > 0 and appxcond <= 0:
-                for ii in xrange(n_nz):
-                    i = indices[ii]
-                    # Need to remove the old z and had the new one.
-                    b[i] += z_diff * col[i]
-                break
 
             # Compute objective function value.
             self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
@@ -284,7 +262,7 @@ cdef class LossFunction:
         cdef int i, k, ii, step
         cdef double scaling, delta, L, R_j, Lpp_max, dmax
         cdef double tmp, L_new, R_j_new
-        cdef double L_tmp, bound, Lpp_tmp
+        cdef double L_tmp, Lpp_tmp
         cdef double* y_ptr
         cdef double* b_ptr
         cdef double* Z_ptr
@@ -305,7 +283,7 @@ cdef class LossFunction:
 
             for k in xrange(n_vectors):
                 self.derivatives(j, C, indices, data, n_nz, Z_ptr, y_ptr,
-                                 b_ptr, &g[k], &Lpp_tmp, &L_tmp, &bound)
+                                 b_ptr, &g[k], &Lpp_tmp, &L_tmp)
                 L += L_tmp
                 Lpp_max = max(Lpp_max, Lpp_tmp)
                 y_ptr += n_samples
@@ -472,8 +450,7 @@ cdef class Squared(LossFunction):
                           double *b,
                           double *Lp,
                           double *Lpp,
-                          double *L,
-                          double *bound):
+                          double *L):
         cdef int ii, i
 
         Lp[0] = 0
@@ -489,7 +466,6 @@ cdef class Squared(LossFunction):
         Lpp[0] = 2 * C * Lpp[0]
         Lp[0] = 2 * C * Lp[0]
         L[0] *= C
-        bound[0] = 0
 
     cdef void update(self,
                      int j,
@@ -539,10 +515,8 @@ cdef class SquaredHinge(LossFunction):
                           double *b,
                           double *Lp,
                           double *Lpp,
-                          double *L,
-                          double *bound):
+                          double *L):
         cdef int i, ii
-        cdef double xj_sq = 0
         cdef double val
 
         Lp[0] = 0
@@ -553,7 +527,6 @@ cdef class SquaredHinge(LossFunction):
             i = indices[ii]
             val = data[ii] * y[i]
             col[i] = val
-            xj_sq += val * val
 
             if b[i] > 0:
                 Lp[0] -= b[i] * val
@@ -562,7 +535,6 @@ cdef class SquaredHinge(LossFunction):
 
         Lp[0] = 2 * C * Lp[0]
         Lpp[0] = 2 * C * Lpp[0]
-        bound[0] = xj_sq
         L[0] *= C
 
     cdef void update(self,
@@ -695,10 +667,8 @@ cdef class ModifiedHuber(LossFunction):
                           double *b,
                           double *Lp,
                           double *Lpp,
-                          double *L,
-                          double *bound):
+                          double *L):
         cdef int i, ii
-        cdef double xj_sq = 0
         cdef double val
 
         Lp[0] = 0
@@ -709,7 +679,6 @@ cdef class ModifiedHuber(LossFunction):
             i = indices[ii]
             val = data[ii] * y[i]
             col[i] = val
-            xj_sq += val * val
 
             if b[i] > 2:
                 Lp[0] -= 2 * val
@@ -722,7 +691,6 @@ cdef class ModifiedHuber(LossFunction):
 
         Lp[0] = 2 * C * Lp[0]
         Lpp[0] = 2 * C * Lpp[0]
-        bound[0] = 0
         L[0] *= C
 
     cdef void update(self,
@@ -779,10 +747,8 @@ cdef class Log(LossFunction):
                           double *b,
                           double *Lp,
                           double *Lpp,
-                          double *L,
-                          double *bound):
+                          double *L):
         cdef int i, ii
-        cdef double xj_sq = 0
         cdef double val, tau, exppred
 
         Lp[0] = 0
@@ -803,7 +769,6 @@ cdef class Log(LossFunction):
         Lp[0] = C * Lp[0]
         Lpp[0] = C * Lpp[0]
         L[0] *= C
-        bound[0] = 0
 
 
     cdef void update(self,
