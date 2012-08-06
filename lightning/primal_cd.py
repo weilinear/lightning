@@ -84,23 +84,9 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
     def fit(self, X, y):
         rs = self._get_random_state()
 
-        # Check data
-        if self.kernel:
-            X = np.ascontiguousarray(X, dtype=np.float64)
-            if self.components is not None:
-                A = np.ascontiguousarray(self.components, dtype=np.float64)
-            else:
-                A = X
-            self.support_vectors_ = A
-        else:
-            if sp.issparse(X):
-                X = X.tocsc()
-            else:
-                X = np.asfortranarray(X, dtype=np.float64)
-            A = None
-
         # Create dataset
-        ds = self._get_dataset(X, A)
+        X, A, ds = self._get_dataset(X, self.components, order="fortran")
+        self.support_vectors_ = A
         n_samples = ds.get_n_samples()
         n_features = ds.get_n_features()
 
@@ -180,7 +166,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         return self
 
     def decision_function(self, X):
-        ds = self._get_dataset(X, self.support_vectors_)
+        X, _, ds = self._get_dataset(X, self.support_vectors_)
         return ds.dot(self.coef_.T) + self.intercept_
 
 

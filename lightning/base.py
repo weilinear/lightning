@@ -107,21 +107,34 @@ class BaseClassifier(BaseEstimator):
 
         return out
 
-    def _get_dataset(self, X, Y=None, kernel=True):
+    def _get_dataset(self, X, Y=None, kernel=True, order="c"):
         if kernel and self.kernel is not None:
+            X = np.ascontiguousarray(X, dtype=np.float64)
+
             if Y is None:
                 Y = X
-            return KernelDataset(X, Y, self.kernel,
-                                 self.gamma, self.coef0, self.degree,
-                                 self.cache_mb, 1, self.verbose)
-        else:
-            if sp.isspmatrix_csc(X):
-                return CSCDataset(X)
-            elif sp.isspmatrix_csr(X):
-                return CSRDataset(X)
-            elif np.isfortran(X):
-                return FortranDataset(X)
             else:
-                return ContiguousDataset(X)
+                Y = np.ascontiguousarray(Y, dtype=np.float64)
+
+            ds = KernelDataset(X, Y, self.kernel,
+                               self.gamma, self.coef0, self.degree,
+                               self.cache_mb, 1, self.verbose)
+        else:
+            if sp.isspmatrix(X):
+                if order == "fortran":
+                    X = X.tocsc()
+                    ds = CSCDataset(X)
+                else:
+                    X = X.tocsr()
+                    ds = CSRDataset(X)
+            else:
+                if order == "fortran":
+                    X = np.asfortranarray(X, dtype=np.float64)
+                    ds = FortranDataset(X)
+                else:
+                    X = np.ascontiguousarray(X, dtype=np.float64)
+                    ds = ContiguousDataset(X)
+
+        return X, Y, ds
 
 
