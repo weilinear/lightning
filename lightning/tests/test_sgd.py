@@ -5,10 +5,12 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal, \
                           assert_almost_equal
 from nose.tools import assert_raises, assert_true, assert_equal, \
                        assert_not_equal
-from sklearn.utils.testing import assert_greater
 
+from sklearn.utils.testing import assert_greater
 from sklearn.datasets.samples_generator import make_classification
+
 from lightning.sgd import SGDClassifier, SGDClassifier
+from lightning.dataset_fast import KernelDataset
 
 
 bin_dense, bin_target = make_classification(n_samples=200, n_features=100,
@@ -40,6 +42,13 @@ def test_binary_linear_sgd():
 
             clf.fit(data, bin_target)
             assert_greater(clf.score(data, bin_target), 0.94)
+
+
+def test_custom_dataset():
+    ds = KernelDataset(bin_dense, bin_dense, kernel="rbf", gamma=0.1)
+    clf = SGDClassifier(random_state=0)
+    clf.fit(ds, bin_target)
+    assert_equal(clf.score(ds, bin_target), 1.0)
 
 
 def test_binary_kernel_sgd():

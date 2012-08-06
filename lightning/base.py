@@ -12,6 +12,7 @@ from sklearn.preprocessing import LabelEncoder
 
 from .random import RandomState
 
+from .dataset_fast import Dataset
 from .dataset_fast import ContiguousDataset
 from .dataset_fast import FortranDataset
 from .dataset_fast import CSRDataset
@@ -108,7 +109,10 @@ class BaseClassifier(BaseEstimator):
         return out
 
     def _get_dataset(self, X, Y=None, kernel=True, order="c"):
-        if kernel and self.kernel is not None:
+        if isinstance(X, Dataset):
+            return X
+
+        elif kernel and self.kernel is not None:
             X = np.ascontiguousarray(X, dtype=np.float64)
 
             if Y is None:

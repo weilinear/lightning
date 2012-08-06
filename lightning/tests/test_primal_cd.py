@@ -12,6 +12,7 @@ from sklearn.preprocessing import LabelBinarizer
 
 from lightning.primal_cd import CDClassifier, CDClassifier
 from lightning.primal_cd import C_lower_bound
+from lightning.dataset_fast import KernelDataset
 
 bin_dense, bin_target = make_classification(n_samples=200, n_features=100,
                                             n_informative=5,
@@ -53,6 +54,16 @@ def test_fit_rbf_binary_l1r():
     acc = clf2.score(K, bin_target)
     assert_almost_equal(acc, 0.845)
     n_nz = np.sum(clf2.coef_ != 0)
+    assert_equal(n_nz, 160)
+
+
+def test_fit_rbf_binary_l1r_ds():
+    ds = KernelDataset(bin_dense, bin_dense, kernel="rbf", gamma=0.1)
+    clf = CDClassifier(C=0.5, random_state=0, penalty="l1")
+    clf.fit(ds, bin_target)
+    acc = clf.score(ds, bin_target)
+    assert_almost_equal(acc, 0.845)
+    n_nz = np.sum(clf.coef_ != 0)
     assert_equal(n_nz, 160)
 
 
@@ -107,6 +118,21 @@ def test_warm_start_l1r_rbf():
 
     clf.C = 0.6
     clf.fit(bin_dense, bin_target)
+    n_nz2 = np.sum(clf.coef_ != 0)
+
+    assert_true(n_nz < n_nz2)
+
+
+def test_warm_start_l1r_rbf_ds():
+    ds = KernelDataset(bin_dense, bin_dense, kernel="rbf", gamma=0.1)
+    clf = CDClassifier(warm_start=True, random_state=0, penalty="l1")
+
+    clf.C = 0.5
+    clf.fit(ds, bin_target)
+    n_nz = np.sum(clf.coef_ != 0)
+
+    clf.C = 0.6
+    clf.fit(ds, bin_target)
     n_nz2 = np.sum(clf.coef_ != 0)
 
     assert_true(n_nz < n_nz2)

@@ -50,6 +50,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         self.verbose = verbose
         self.n_jobs = n_jobs
         self.coef_ = None
+        self.support_vectors_ = None
 
     def _get_loss(self):
         losses = {
@@ -69,18 +70,17 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         return learning_rates[self.learning_rate]
 
     def fit(self, X, y):
-        n_samples, n_features = X.shape
         rs = check_random_state(self.random_state)
 
         reencode = self.multiclass == "natural"
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
-        if self.kernel == "linear":
-            ds = self._get_dataset(X, kernel=False)
-            self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
-        else:
-            ds = self._get_dataset(X)
-            self.coef_ = np.zeros((n_vectors, n_samples), dtype=np.float64)
+        kernel = False if self.kernel == "linear" else True
+        ds = self._get_dataset(X, kernel=kernel)
+        n_samples = ds.get_n_samples()
+        n_features = ds.get_n_features()
+        d = n_features if self.kernel == "linear" else n_samples
+        self.coef_ = np.zeros((n_vectors, d), dtype=np.float64)
 
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
 
@@ -122,8 +122,6 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         return self
 
     def decision_function(self, X):
-        if self.kernel == "linear":
-            return safe_sparse_dot(X, self.coef_.T) + self.intercept_
-        else:
-            ds = self._get_dataset(X, self.support_vectors_)
-            return ds.dot(self.coef_.T) + self.intercept_
+        kernel = False if self.kernel == "linear" else True
+        ds = self._get_dataset(X, self.support_vectors_, kernel=kernel)
+        return ds.dot(self.coef_.T) + self.intercept_
