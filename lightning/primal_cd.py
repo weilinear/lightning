@@ -85,8 +85,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         rs = self._get_random_state()
 
         # Create dataset
-        X, A, ds = self._get_dataset(X, self.components, order="fortran")
-        self.support_vectors_ = A
+        ds = self._get_dataset(X, self.components, order="fortran")
         n_samples = ds.get_n_samples()
         n_features = ds.get_n_features()
 
@@ -161,12 +160,13 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         self.support_indices_ = np.arange(n_features, dtype=np.int32)[nz]
 
         if self.kernel:
+            A = X if self.components is None else self.components
             self._post_process(A)
 
         return self
 
     def decision_function(self, X):
-        X, _, ds = self._get_dataset(X, self.support_vectors_)
+        ds = self._get_dataset(X, self.support_vectors_)
         return ds.dot(self.coef_.T) + self.intercept_
 
 

@@ -76,10 +76,10 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         if self.kernel == "linear":
-            X, _, ds = self._get_dataset(X, kernel=False)
+            ds = self._get_dataset(X, kernel=False)
             self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
         else:
-            X, _, ds = self._get_dataset(X)
+            ds = self._get_dataset(X)
             self.coef_ = np.zeros((n_vectors, n_samples), dtype=np.float64)
 
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
@@ -125,5 +125,5 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         if self.kernel == "linear":
             return safe_sparse_dot(X, self.coef_.T) + self.intercept_
         else:
-            X, _, ds = self._get_dataset(X, self.support_vectors_)
+            ds = self._get_dataset(X, self.support_vectors_)
             return ds.dot(self.coef_.T) + self.intercept_

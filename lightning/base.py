@@ -135,6 +135,6 @@ class BaseClassifier(BaseEstimator):
                     X = np.ascontiguousarray(X, dtype=np.float64)
                     ds = ContiguousDataset(X)
 
-        return X, Y, ds
+        return ds
 
 

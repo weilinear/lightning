@@ -49,8 +49,8 @@ class DualSVC(BaseClassifier, ClassifierMixin):
                               dtype=np.float64)
         n_vectors = Y.shape[1]
 
-        X, _, ds = self._get_dataset(X, kernel=False)
-        _, _, kds = self._get_dataset(X)
+        ds = self._get_dataset(X, kernel=False)
+        kds = self._get_dataset(X)
 
         if not self.warm_start or self.coef_ is None:
             self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
@@ -74,6 +74,6 @@ class DualSVC(BaseClassifier, ClassifierMixin):
         if self.kernel == "linear":
             return safe_sparse_dot(X, self.coef_.T) + self.intercept_
         else:
-            X, _, ds = self._get_dataset(X, self.support_vectors_)
+            ds = self._get_dataset(X, self.support_vectors_)
             return ds.dot(self.dual_coef_.T) + self.intercept_
 

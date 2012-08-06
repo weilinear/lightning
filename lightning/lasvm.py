@@ -60,7 +60,7 @@ class LaSVM(BaseClassifier, ClassifierMixin):
             self.intercept_ = np.zeros((n_vectors,), dtype=np.float64)
 
         self.dual_coef_ = dual_coef
-        X, _, ds = self._get_dataset(X)
+        ds = self._get_dataset(X)
 
         for i in xrange(n_vectors):
             b = _lasvm(self, self.dual_coef_[i],
@@ -82,6 +82,6 @@ class LaSVM(BaseClassifier, ClassifierMixin):
         if self.kernel == "linear":
             return safe_sparse_dot(X, self.coef_.T) + self.intercept_
         else:
-            X, _, ds = self._get_dataset(X, self.support_vectors_)
+            ds = self._get_dataset(X, self.support_vectors_)
             return ds.dot(self.dual_coef_.T) + self.intercept_
 
