@@ -894,6 +894,7 @@ def _primal_cd(self,
                double C,
                int max_iter,
                int shrinking,
+               double violation_init,
                RandomState rs,
                double tol,
                callback,
@@ -908,7 +909,6 @@ def _primal_cd(self,
     cdef int active_size = n_features
     cdef double violation_old = DBL_MAX
     cdef double violation_new
-    cdef double violation_init
     cdef double Dpmax, Dp
     cdef double violation
     cdef int check_convergence = termination == "convergence"
@@ -1024,7 +1024,7 @@ def _primal_cd(self,
         if stop:
             break
 
-        if t == 0:
+        if t == 0 and violation_init == 0:
             violation_init = violation_new
 
         if verbose >= 2:
@@ -1052,6 +1052,8 @@ def _primal_cd(self,
 
     if verbose >= 1:
         print
+
+    return violation_init
 
 
 cpdef _C_lower_bound_kernel(KernelDataset kds,

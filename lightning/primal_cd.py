@@ -79,6 +79,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         self.n_jobs = n_jobs
         self.support_vectors_ = None
         self.coef_ = None
+        self.violation_init_ = {}
 
     def fit(self, X, y):
         rs = self._get_random_state()
@@ -116,6 +117,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                 coef[:, self.support_indices_] = self.coef_
                 self.coef_ = coef
         else:
+            self.C_init = self.C
             self.coef_ = np.zeros((n_vectors, n_features), dtype=np.float64)
             self.errors_ = np.ones((n_vectors, n_samples), dtype=np.float64)
 
@@ -127,24 +129,30 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
 
         # Learning
         if self.penalty == "l1/l2":
-            _primal_cd(self, self.coef_, self.errors_,
-                       ds, y, Y, -1, self.multiclass,
-                       indices, 12, self._get_loss(),
-                       self.selection, self.search_size,
-                       self.termination, self.n_components,
-                       self.C, self.max_iter, self.shrinking,
-                       rs, self.tol, self.callback, self.verbose)
+            vinit = self.violation_init_.get(0, 0) * self.C / self.C_init
+            viol = _primal_cd(self, self.coef_, self.errors_,
+                              ds, y, Y, -1, self.multiclass,
+                              indices, 12, self._get_loss(),
+                              self.selection, self.search_size,
+                              self.termination, self.n_components,
+                              self.C, self.max_iter, self.shrinking, vinit,
+                              rs, self.tol, self.callback, self.verbose)
+            if self.warm_start and len(self.violation_init_) == 0:
+                self.violation_init_[0] = viol
 
         elif self.penalty in ("l1", "l2"):
             penalty = 1 if self.penalty == "l1" else 2
             for k in xrange(n_vectors):
-                _primal_cd(self, self.coef_, self.errors_,
-                           ds, y, Y, k, False,
-                           indices, penalty, self._get_loss(),
-                           self.selection, self.search_size,
-                           self.termination, self.n_components,
-                           self.C, self.max_iter, self.shrinking,
-                           rs, self.tol, self.callback, self.verbose)
+                vinit = self.violation_init_.get(k, 0) * self.C / self.C_init
+                viol = _primal_cd(self, self.coef_, self.errors_,
+                                  ds, y, Y, k, False,
+                                  indices, penalty, self._get_loss(),
+                                  self.selection, self.search_size,
+                                  self.termination, self.n_components,
+                                  self.C, self.max_iter, self.shrinking, vinit,
+                                  rs, self.tol, self.callback, self.verbose)
+                if self.warm_start and not k in self.violation_init_:
+                    self.violation_init_[k] = viol
 
         if self.debiasing:
             nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
@@ -160,7 +168,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                            indices, 2, self._get_loss(),
                            "permute", self.search_size,
                            "convergence", self.n_components,
-                           self.Cd, self.max_iter, self.shrinking,
+                           self.Cd, self.max_iter, self.shrinking, 0,
                            rs, self.tol, self.callback, self.verbose)
 
         nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
