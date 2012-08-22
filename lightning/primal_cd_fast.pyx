@@ -898,6 +898,7 @@ def _primal_cd(self,
                RandomState rs,
                double tol,
                callback,
+               int n_calls,
                int verbose):
 
     cdef int n_samples = X.get_n_samples()
@@ -1007,7 +1008,7 @@ def _primal_cd(self,
                 break
 
             # Callback
-            if has_callback and s % 100 == 0:
+            if has_callback and s % n_calls == 0:
                 ret = callback(self)
                 if ret is not None:
                     stop = 1

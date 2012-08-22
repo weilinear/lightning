@@ -48,7 +48,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                  warm_debiasing=False,
                  selection="permute", search_size=60,
                  n_components=1000, components=None,
-                 random_state=None, callback=None, verbose=0, n_jobs=1):
+                 callback=None, n_calls=100,
+                 random_state=None, verbose=0, n_jobs=1):
         self.C = C
         self.loss = loss
         self.penalty = penalty
@@ -73,8 +74,9 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         self.search_size = search_size
         self.n_components = n_components
         self.components = components
-        self.random_state = random_state
         self.callback = callback
+        self.n_calls = n_calls
+        self.random_state = random_state
         self.verbose = verbose
         self.n_jobs = n_jobs
         self.support_vectors_ = None
@@ -121,7 +123,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                               self.selection, self.search_size,
                               self.termination, self.n_components,
                               self.C, self.max_iter, self.shrinking, vinit,
-                              rs, self.tol, self.callback, self.verbose)
+                              rs, self.tol, self.callback, self.n_calls,
+                              self.verbose)
             if self.warm_start and len(self.violation_init_) == 0:
                 self.violation_init_[0] = viol
 
@@ -135,7 +138,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                                   self.selection, self.search_size,
                                   self.termination, self.n_components,
                                   self.C, self.max_iter, self.shrinking, vinit,
-                                  rs, self.tol, self.callback, self.verbose)
+                                  rs, self.tol, self.callback, self.n_calls,
+                                  self.verbose)
                 if self.warm_start and not k in self.violation_init_:
                     self.violation_init_[k] = viol
 
@@ -154,7 +158,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                            "permute", self.search_size,
                            "convergence", self.n_components,
                            self.Cd, self.max_iter, self.shrinking, 0,
-                           rs, self.tol, self.callback, self.verbose)
+                           rs, self.tol, self.callback, self.n_calls,
+                           self.verbose)
 
         nz = np.sum(self.coef_ != 0, axis=0, dtype=bool)
         self.support_indices_ = np.arange(n_features, dtype=np.int32)[nz]
