@@ -29,13 +29,17 @@ def test_fit_linear_binary_l1r():
     clf.fit(bin_dense, bin_target)
     acc = clf.score(bin_dense, bin_target)
     assert_almost_equal(acc, 1.0)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
+    perc = clf.n_nonzero(percentage=True)
+    assert_equal(perc, float(n_nz) / bin_dense.shape[1])
 
     clf = CDClassifier(C=0.1, random_state=0, penalty="l1")
     clf.fit(bin_dense, bin_target)
     acc = clf.score(bin_dense, bin_target)
     assert_almost_equal(acc, 0.97)
-    n_nz2 = np.sum(clf.coef_ != 0)
+    n_nz2 = clf.n_nonzero()
+    perc2 = clf.n_nonzero(percentage=True)
+    assert_equal(perc2, float(n_nz2) / bin_dense.shape[1])
 
     assert_true(n_nz > n_nz2)
 
@@ -45,7 +49,7 @@ def test_fit_rbf_binary_l1r():
     clf.fit(bin_dense, bin_target)
     acc = clf.score(bin_dense, bin_target)
     assert_almost_equal(acc, 0.845)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(n_nz, 160)
 
     K = pairwise_kernels(bin_dense, metric="rbf", gamma=0.1)
@@ -53,8 +57,10 @@ def test_fit_rbf_binary_l1r():
     clf2.fit(K, bin_target)
     acc = clf2.score(K, bin_target)
     assert_almost_equal(acc, 0.845)
-    n_nz = np.sum(clf2.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(n_nz, 160)
+    perc = clf.n_nonzero(percentage=True)
+    assert_equal(perc, float(n_nz) / bin_dense.shape[0])
 
 
 def test_fit_rbf_binary_l1r_ds():
@@ -63,7 +69,7 @@ def test_fit_rbf_binary_l1r_ds():
     clf.fit(ds, bin_target)
     acc = clf.score(ds, bin_target)
     assert_almost_equal(acc, 0.845)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(n_nz, 160)
 
 
@@ -74,7 +80,7 @@ def test_fit_rbf_binary_l1r_selection():
         clf.fit(bin_dense, bin_target)
         acc = clf.score(bin_dense, bin_target)
         assert_true(acc >= 0.74)
-        n_nz = np.sum(clf.coef_ != 0)
+        n_nz = clf.n_nonzero()
         assert_true(n_nz <= 102)
 
 
@@ -99,11 +105,11 @@ def test_warm_start_l1r():
 
     clf.C = 0.1
     clf.fit(bin_dense, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
 
     clf.C = 0.2
     clf.fit(bin_dense, bin_target)
-    n_nz2 = np.sum(clf.coef_ != 0)
+    n_nz2 = clf.n_nonzero()
 
     assert_true(n_nz < n_nz2)
 
@@ -114,11 +120,11 @@ def test_warm_start_l1r_rbf():
 
     clf.C = 0.5
     clf.fit(bin_dense, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
 
     clf.C = 0.6
     clf.fit(bin_dense, bin_target)
-    n_nz2 = np.sum(clf.coef_ != 0)
+    n_nz2 = clf.n_nonzero()
 
     assert_true(n_nz < n_nz2)
 
@@ -129,11 +135,11 @@ def test_warm_start_l1r_rbf_ds():
 
     clf.C = 0.5
     clf.fit(ds, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
 
     clf.C = 0.6
     clf.fit(ds, bin_target)
-    n_nz2 = np.sum(clf.coef_ != 0)
+    n_nz2 = clf.n_nonzero()
 
     assert_true(n_nz < n_nz2)
 
@@ -144,7 +150,7 @@ def test_early_stopping_l1r_rbf():
                     random_state=0, penalty="l1")
 
     clf.fit(bin_dense, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
 
     assert_equal(n_nz, 30)
 
@@ -167,7 +173,7 @@ def test_fit_linear_binary_l2r():
     clf2.fit(K, bin_target)
     acc = clf2.score(K, bin_target)
     assert_almost_equal(acc, 1.0)
-    n_nz = np.sum(clf2.coef_ != 0)
+    n_nz = clf2.n_nonzero()
     assert_equal(n_nz, 200)
 
 
@@ -208,7 +214,7 @@ def test_fit_rbf_binary_l2r():
     clf.fit(bin_dense, bin_target)
     acc = clf.score(bin_dense, bin_target)
     assert_almost_equal(acc, 1.0)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(n_nz, 200) # dense solution...
 
 
@@ -304,7 +310,7 @@ def test_early_stopping_l2r_rbf():
                       random_state=0, penalty="l2")
 
     clf.fit(bin_dense, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
 
     assert_equal(n_nz, 30)
 
@@ -328,12 +334,12 @@ def test_lower_bound_binary():
     Cmin = C_lower_bound(bin_dense, bin_target)
     clf = CDClassifier(C=Cmin, random_state=0, penalty="l1")
     clf.fit(bin_dense, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(0, n_nz)
 
     clf = CDClassifier(C=Cmin * 2, random_state=0, penalty="l1")
     clf.fit(bin_dense, bin_target)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_not_equal(0, n_nz)
 
 
@@ -415,7 +421,7 @@ def test_fit_squared_loss_l1():
     y[y == 0] = -1
     assert_array_almost_equal(np.dot(bin_dense, clf.coef_.ravel()) - y,
                               clf.errors_.ravel())
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(n_nz, 89)
 
     K = pairwise_kernels(bin_dense, metric="rbf", gamma=0.1)
@@ -425,7 +431,7 @@ def test_fit_squared_loss_l1():
                        loss="squared", max_iter=100)
     clf.fit(bin_dense, bin_target)
     assert_almost_equal(clf.score(bin_dense, bin_target), 0.845, 3)
-    n_nz = np.sum(clf.coef_ != 0)
+    n_nz = clf.n_nonzero()
     assert_equal(n_nz, 160)
 
 
@@ -440,7 +446,8 @@ def test_l1l2_multiclass_log_loss():
         df -= sel[:, np.newaxis]
         df = np.exp(df)
         assert_array_almost_equal(clf.errors_, df.T)
-        assert_equal(np.sum(clf.coef_ != 0), 297)
+        nz = np.sum(clf.coef_ != 0)
+        assert_equal(nz, 297)
 
         clf = CDClassifier(penalty="l1/l2", loss="log", multiclass=True,
                            max_iter=5, C=0.3, random_state=0)

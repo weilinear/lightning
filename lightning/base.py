@@ -64,14 +64,22 @@ class BaseClassifier(BaseEstimator):
 
         return y, n_classes, n_vectors
 
-    def n_nonzero(self):
+    def n_nonzero(self, percentage=False):
         if hasattr(self, "support_indices_") and \
            self.support_indices_.shape[0] == 0:
             return 0
         elif hasattr(self, "dual_coef_"):
-            return np.sum(np.sum(self.dual_coef_ != 0, axis=0, dtype=bool))
+            n_nz = np.sum(np.sum(self.dual_coef_ != 0, axis=0, dtype=bool))
         else:
-            return np.sum(np.sum(self.coef_ != 0, axis=0, dtype=bool))
+            n_nz = np.sum(np.sum(self.coef_ != 0, axis=0, dtype=bool))
+
+        if percentage:
+            if self.support_vectors_ is not None:
+                n_nz /= float(self.n_samples_)
+            else:
+                n_nz /= float(self.coef_.shape[1])
+
+        return n_nz
 
     def _post_process(self, X):
         # We can't know the support vectors when using precomputed kernels.
@@ -82,6 +90,7 @@ class BaseClassifier(BaseEstimator):
                 mask = safe_mask(X, sv)
                 self.support_vectors_ = np.ascontiguousarray(X[mask])
                 self.support_indices_ = np.arange(X.shape[0], dtype=np.int32)[sv]
+                self.n_samples_ = X.shape[0]
 
             if self.verbose >= 1:
                 print "Number of support vectors:", np.sum(sv)
@@ -95,6 +104,7 @@ class BaseClassifier(BaseEstimator):
                 mask = safe_mask(X, sv)
                 self.support_vectors_ = np.ascontiguousarray(X[mask])
                 self.support_indices_ = np.arange(X.shape[0], dtype=np.int32)[sv]
+                self.n_samples_ = X.shape[0]
 
             if self.verbose >= 1:
                 print "Number of support vectors:", np.sum(sv)
