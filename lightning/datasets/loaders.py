@@ -3,6 +3,7 @@
 import os
 
 import numpy as np
+import scipy.sparse as sp
 
 try:
     from svmlight_loader import load_svmlight_files
@@ -207,11 +208,25 @@ def load_protein():
     return _todense(_load(train_file, test_file, "protein"))
 
 
+def load_rcv1():
+    data_home = get_data_home()
+    train_file = os.path.join(data_home, "rcv1_train.multiclass")
+    test_file = os.path.join(data_home, "rcv1_test.multiclass")
+    return _load(train_file, test_file, "rcv1")
+
+
 def load_satimage():
     data_home = get_data_home()
     train_file = os.path.join(data_home, "satimage.scale.tr")
     test_file = os.path.join(data_home, "satimage.scale.t")
     return _todense(_load(train_file, test_file, "satimage"))
+
+
+def load_sector():
+    data_home = get_data_home()
+    train_file = os.path.join(data_home, "sector.scale")
+    test_file = os.path.join(data_home, "sector.t.scale")
+    return _load(train_file, test_file, "sector")
 
 
 def load_usps():
@@ -260,8 +275,10 @@ LOADERS = {
             "news20" : load_news20,
             "mnist": load_mnist,
             "satimage": load_satimage,
+            "sector": load_sector,
             "pendigits": load_pendigits,
             "protein": load_protein,
+            "rcv1": load_rcv1,
             "usps": load_usps,
             "usps_noisy": load_usps_noisy,
 }
@@ -271,7 +288,20 @@ def get_loader(dataset):
     return LOADERS[dataset]
 
 
-def load_dataset(dataset):
-    return get_loader(dataset)()
+def load_dataset(dataset, group_all=False):
+    ret = get_loader(dataset)()
+
+    if group_all and len(ret) > 2:
+        X_tr, y_tr, X_te, y_te = ret
+
+        if hasattr(X_tr, "tocsr"):
+            data = sp.vstack((X_tr, X_te)).tocsr()
+        else:
+            data = np.vstack((X_tr, X_te))
+        target = np.concatenate((y_tr, y_te))
+
+        ret = (data, target)
+
+    return ret
 
 

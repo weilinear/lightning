@@ -126,22 +126,36 @@ download-news20: datadir
 	bunzip2 news20.t.scale.bz2
 	mv news20.t.scale $(DATADIR)
 
-download-pendigits:
+download-pendigits: datadir
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/pendigits
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/pendigits.t
 	mv pendigits* $(DATADIR)
 
-download-protein:
+download-protein: datadir
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/protein.tr.bz2
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/protein.t.bz2
 	bunzip2 protein.tr.bz2
 	bunzip2 protein.t.bz2
 	mv protein* $(DATADIR)
 
+download-rcv1: datadir
+	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/rcv1_train.multiclass.bz2
+	bunzip2 rcv1_train.multiclass.bz2
+	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/rcv1_test.multiclass.bz2
+	bunzip2 rcv1_test.multiclass.bz2
+	mv rcv1* $(DATADIR)
+
 download-satimage: datadir
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/satimage.scale.tr
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/satimage.scale.t
 	mv satimage* $(DATADIR)
+
+download-sector: datadir
+	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/sector/sector.scale.bz2
+	bunzip2 sector.scale.bz2
+	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/sector/sector.t.scale.bz2
+	bunzip2 sector.t.scale.bz2
+	mv sector* $(DATADIR)
 
 download-usps: datadir
 	./download.sh http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/usps.bz2
