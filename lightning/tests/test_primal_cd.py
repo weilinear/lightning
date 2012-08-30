@@ -464,7 +464,7 @@ def test_l1l2_multiclass_squared_hinge_loss():
                            multiclass=True,
                            max_iter=20, C=1.0, random_state=0)
         clf.fit(data, mult_target)
-        assert_almost_equal(clf.score(data, mult_target), 0.9, 3)
+        assert_almost_equal(clf.score(data, mult_target), 0.913, 3)
         df = clf.decision_function(data)
         n_samples, n_vectors = df.shape
         diff = np.zeros_like(clf.errors_)
@@ -480,7 +480,7 @@ def test_l1l2_multiclass_squared_hinge_loss():
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.83, 3)
         nz = np.sum(clf.coef_ != 0)
-        assert_equal(nz, 213)
+        assert_equal(nz, 207)
         assert_true(nz % 3 == 0) # should be a multiple of n_classes
 
 
