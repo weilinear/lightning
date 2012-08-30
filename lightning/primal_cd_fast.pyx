@@ -598,7 +598,6 @@ cdef class SquaredHinge(LossFunction):
                     tmp = data[ii] * data[ii]
                     Z[y[i]] += tmp
                     Z[k] += tmp
-                    Lpp_max[0] += data[ii] * data[ii]
 
         Lpp_max[0] = -DBL_MAX
         for k in xrange(n_vectors):
