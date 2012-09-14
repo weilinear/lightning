@@ -17,6 +17,9 @@ from lightning.random.random_fast cimport RandomState
 from lightning.dataset_fast cimport Dataset
 from lightning.dataset_fast cimport KernelDataset
 
+DEF LOWER = 1e-2
+DEF UPPER = 1e9
+
 cdef extern from "math.h":
    double fabs(double)
    double exp(double x)
@@ -283,8 +286,7 @@ cdef class LossFunction:
                 b_ptr += n_samples
                 Z_ptr += n_samples
 
-            Lpp_max = min(max(Lpp_max, 1e-9), 1e9)
-
+            Lpp_max = min(max(Lpp_max, LOWER), UPPER)
 
         # Compute partial gradient norm and regularization term.
         g_norm = 0
@@ -321,7 +323,7 @@ cdef class LossFunction:
         for k in xrange(n_vectors):
             scaling += d[k] * d[k]
 
-        scaling = 1 - 1 / (Lpp_max * sqrt(scaling))
+        scaling = 1 - lmbda / (Lpp_max * sqrt(scaling))
 
         if scaling < 0:
             scaling = 0
@@ -606,7 +608,7 @@ cdef class SquaredHinge(LossFunction):
 
         L[0] *= C
         Lpp_max[0] *= 2 * C
-        Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
+        Lpp_max[0] = min(max(Lpp_max[0], LOWER), UPPER)
 
     cdef void update_mc(self,
                         double C,
@@ -848,7 +850,7 @@ cdef class Log(LossFunction):
             Lpp *= C
             Lpp_max[0] = max(Lpp, Lpp_max[0])
 
-        Lpp_max[0] = min(max(Lpp_max[0], 1e-9), 1e9)
+        Lpp_max[0] = min(max(Lpp_max[0], LOWER), UPPER)
 
     cdef void update_mc(self,
                         double C,
