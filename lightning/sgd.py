@@ -10,8 +10,7 @@ from sklearn.utils.extmath import safe_sparse_dot
 from .base import BaseClassifier
 
 from .sgd_fast import _binary_sgd
-from .sgd_fast import _multiclass_hinge_sgd
-from .sgd_fast import _multiclass_log_sgd
+from .sgd_fast import _multiclass_sgd
 
 from .sgd_fast import ModifiedHuber
 from .sgd_fast import Hinge
@@ -20,6 +19,9 @@ from .sgd_fast import SparseLog
 from .sgd_fast import SquaredLoss
 from .sgd_fast import Huber
 from .sgd_fast import EpsilonInsensitive
+
+from .sgd_fast import MulticlassLog
+from .sgd_fast import MulticlassHinge
 
 
 class SGDClassifier(BaseClassifier, ClassifierMixin):
@@ -65,6 +67,13 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         }
         return losses[self.loss]
 
+    def _get_multiclass_loss(self):
+        losses = {
+            "log" : MulticlassLog(),
+            "hinge" : MulticlassHinge(),
+        }
+        return losses[self.loss]
+
     def _get_learning_rate(self):
         learning_rates = {"constant": 1, "pegasos": 2, "invscaling": 3}
         return learning_rates[self.learning_rate]
@@ -102,10 +111,10 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                             rs, self.verbose)
 
         elif self.multiclass == "natural":
-            if self.loss in ("hinge", "log"):
-                func = eval("_multiclass_%s_sgd" % self.loss)
-                func(self, self.coef_, self.intercept_,
+            if self.loss in ("log", "hinge"):
+                _multiclass_sgd(self, self.coef_, self.intercept_,
                      ds, y.astype(np.int32),
+                     self._get_multiclass_loss(),
                      self.n_components,
                      self.lmbda, self._get_learning_rate(), self.eta0,
                      self.power_t, self.fit_intercept, self.intercept_decay,
