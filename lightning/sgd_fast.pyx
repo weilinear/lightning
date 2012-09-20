@@ -79,6 +79,26 @@ cdef class Hinge(LossFunction):
         return 0.0
 
 
+cdef class SquaredHinge(LossFunction):
+
+    cdef double threshold
+
+    def __init__(self, double threshold=1.0):
+        self.threshold = threshold
+
+    cpdef double loss(self, double p, double y):
+        cdef double z = 1 - p * y
+        if z > 0:
+            return z * z
+        return 0.0
+
+    cpdef double get_update(self, double p, double y):
+        cdef double z = 1 - p * y
+        if z > 0:
+            return 2 * y * z
+        return 0.0
+
+
 cdef class Log(LossFunction):
 
     cpdef double loss(self, double p, double y):
@@ -396,7 +416,6 @@ cdef class MulticlassHinge(MulticlassLossFunction):
                       int fit_intercept
                      ):
         cdef int n_vectors = W.shape[0]
-        cdef double update
         cdef double best = -DBL_MAX
         cdef int l, k
 
@@ -420,6 +439,52 @@ cdef class MulticlassHinge(MulticlassLossFunction):
                 intercepts[y] += scale
 
 
+cdef class MulticlassSquaredHinge(MulticlassLossFunction):
+
+    cdef void update(self,
+                      double* scores,
+                      int y,
+                      double* data,
+                      int* indices,
+                      int n_nz,
+                      int i,
+                      np.ndarray[double, ndim=2, mode='c'] W,
+                      double* w_scales,
+                      double* intercepts,
+                      double intercept_decay,
+                      double eta,
+                      int linear_kernel,
+                      int fit_intercept
+                     ):
+        cdef int n_vectors = W.shape[0]
+        cdef double u
+        cdef int l
+
+        for l in xrange(n_vectors):
+
+            if y == l:
+                continue
+
+            u = 1 - scores[y] + scores[l]
+
+            if u <= 0:
+                continue
+
+            u *= eta * 2
+
+            if linear_kernel:
+                _add(W, l, indices, data, n_nz, -u / w_scales[l])
+                _add(W, y, indices, data, n_nz, u / w_scales[y])
+            else:
+                W[l, i] -= u / w_scales[l]
+                W[y, i] += u / w_scales[y]
+
+            if fit_intercept:
+                scale = u * intercept_decay
+                intercepts[l] -= scale
+                intercepts[y] += scale
+
+
 cdef class MulticlassLog(MulticlassLossFunction):
 
     cdef void update(self,
@@ -438,7 +503,7 @@ cdef class MulticlassLog(MulticlassLossFunction):
                       int fit_intercept
                      ):
         cdef int n_vectors = W.shape[0]
-        cdef double update
+        cdef double u
         cdef int l
 
         _softmax(scores, n_vectors)
@@ -448,19 +513,19 @@ cdef class MulticlassLog(MulticlassLossFunction):
             if scores[l] != 0:
                 if l == y:
                     # Need to update the correct label minus the prediction.
-                    update = eta * (1 - scores[l])
+                    u = eta * (1 - scores[l])
                 else:
                     # Need to update the incorrect label weighted by the
                     # prediction.
-                    update = -eta * scores[l]
+                    u = -eta * scores[l]
 
                 if linear_kernel:
-                    _add(W, l, indices, data, n_nz, update / w_scales[l])
+                    _add(W, l, indices, data, n_nz, u / w_scales[l])
                 else:
-                    W[l, i] += update / w_scales[l]
+                    W[l, i] += u / w_scales[l]
 
                 if fit_intercept:
-                    intercepts[l] += update * intercept_decay
+                    intercepts[l] += u * intercept_decay
 
 
 def _multiclass_sgd(self,
@@ -487,7 +552,7 @@ def _multiclass_sgd(self,
     # Initialization
     cdef int it, i, l
     cdef long t = 1
-    cdef double update, pred, eta, scale
+    cdef double pred, eta, scale
     cdef double intercept = 0.0
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
     w_scales = np.ones(n_vectors, dtype=np.float64)

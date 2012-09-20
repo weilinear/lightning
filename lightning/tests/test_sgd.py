@@ -34,6 +34,9 @@ def test_binary_linear_sgd():
                                   fit_intercept=True, learning_rate="invscaling"),
                     SGDClassifier(random_state=0, loss="hinge",
                                   fit_intercept=True, learning_rate="constant"),
+                    SGDClassifier(random_state=0, loss="squared_hinge",
+                                  eta0=1e-2,
+                                  fit_intercept=True, learning_rate="constant"),
                     SGDClassifier(random_state=0, loss="log",
                                   fit_intercept=True, learning_rate="constant"),
                     SGDClassifier(random_state=0, loss="modified_huber",
@@ -79,6 +82,16 @@ def test_multiclass_hinge_sgd():
     for data in (mult_dense, mult_csr):
         for fit_intercept in (True, False):
             clf = SGDClassifier(loss="hinge", multiclass="natural",
+                                fit_intercept=fit_intercept, random_state=0)
+            clf.fit(data, mult_target)
+            assert_greater(clf.score(data, mult_target), 0.78)
+
+
+def test_multiclass_squared_hinge_sgd():
+    for data in (mult_dense, mult_csr):
+        for fit_intercept in (True, False):
+            clf = SGDClassifier(loss="squared_hinge", multiclass="natural",
+                                learning_rate="constant", eta0=1e-3,
                                 fit_intercept=fit_intercept, random_state=0)
             clf.fit(data, mult_target)
             assert_greater(clf.score(data, mult_target), 0.78)

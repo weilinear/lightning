@@ -14,6 +14,7 @@ from .sgd_fast import _multiclass_sgd
 
 from .sgd_fast import ModifiedHuber
 from .sgd_fast import Hinge
+from .sgd_fast import SquaredHinge
 from .sgd_fast import Log
 from .sgd_fast import SparseLog
 from .sgd_fast import SquaredLoss
@@ -22,6 +23,7 @@ from .sgd_fast import EpsilonInsensitive
 
 from .sgd_fast import MulticlassLog
 from .sgd_fast import MulticlassHinge
+from .sgd_fast import MulticlassSquaredHinge
 
 
 class SGDClassifier(BaseClassifier, ClassifierMixin):
@@ -58,6 +60,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         losses = {
             "modified_huber" : ModifiedHuber(),
             "hinge" : Hinge(1.0),
+            "squared_hinge" : SquaredHinge(1.0),
             "perceptron" : Hinge(0.0),
             "log": Log(),
             "sparse_log" : SparseLog(),
@@ -71,6 +74,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         losses = {
             "log" : MulticlassLog(),
             "hinge" : MulticlassHinge(),
+            "squared_hinge" : MulticlassSquaredHinge(),
         }
         return losses[self.loss]
 
@@ -111,16 +115,13 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                             rs, self.verbose)
 
         elif self.multiclass == "natural":
-            if self.loss in ("log", "hinge"):
-                _multiclass_sgd(self, self.coef_, self.intercept_,
-                     ds, y.astype(np.int32),
-                     self._get_multiclass_loss(),
-                     self.n_components,
-                     self.lmbda, self._get_learning_rate(), self.eta0,
-                     self.power_t, self.fit_intercept, self.intercept_decay,
-                     self.max_iter * n_samples, rs, self.verbose)
-            else:
-                raise ValueError("Loss not supported for multiclass!")
+            _multiclass_sgd(self, self.coef_, self.intercept_,
+                 ds, y.astype(np.int32),
+                 self._get_multiclass_loss(),
+                 self.n_components,
+                 self.lmbda, self._get_learning_rate(), self.eta0,
+                 self.power_t, self.fit_intercept, self.intercept_decay,
+                 int(self.max_iter * n_samples), rs, self.verbose)
 
         else:
             raise ValueError("Wrong value for multiclass.")
