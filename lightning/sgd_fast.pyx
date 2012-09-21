@@ -551,8 +551,8 @@ def _multiclass_sgd(self,
     cdef Py_ssize_t n_vectors = W.shape[0]
 
     # Initialization
-    cdef int it, i, l, j
-    cdef long t = 1
+    cdef int it, i, l, jj
+    cdef long t
     cdef double pred, eta, scale, norm
     cdef double intercept = 0.0
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
@@ -560,6 +560,12 @@ def _multiclass_sgd(self,
     cdef np.ndarray[double, ndim=1, mode='c'] scores
     scores = np.ones(n_vectors, dtype=np.float64)
     cdef int all_zero
+
+    cdef np.ndarray[long, ndim=1, mode='c'] timestamps
+    timestamps = np.zeros(n_features, dtype=np.int64)
+
+    cdef np.ndarray[double, ndim=1, mode='c'] delta
+    delta = np.zeros(max_iter + 1, dtype=np.float64)
 
     # Kernel
     cdef int linear_kernel = 1
@@ -578,7 +584,7 @@ def _multiclass_sgd(self,
     index = np.arange(n_samples, dtype=np.int32)
     random_state.shuffle(index)
 
-    for t in xrange(t, max_iter + 1):
+    for t in xrange(1, max_iter + 1):
         # Retrieve current training instance.
         i = index[(t-1) % n_samples]
 
@@ -614,16 +620,23 @@ def _multiclass_sgd(self,
                     w_scales[l] = 1.0
 
         elif penalty == 12:
-            for j in xrange(n_features):
+            delta[t] = delta[t-1] + eta * lmbda
+
+            for jj in xrange(n_nz):
+                j = indices[jj]
+
                 norm = 0
                 for l in xrange(n_vectors):
                     norm += W[l, j] * W[l, j]
                 norm = sqrt(norm)
-                scale = 1 - eta * lmbda / norm
+
+                scale = 1 - (delta[t] - delta[timestamps[j]]) / norm
                 if scale < 0:
                     scale = 0
                 for l in xrange(n_vectors):
                     W[l, j] *= scale
+
+                timestamps[j] = t
 
         # Update support vector set.
         if not linear_kernel:
