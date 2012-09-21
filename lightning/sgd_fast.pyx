@@ -21,6 +21,7 @@ from lightning.dataset_fast cimport Dataset
 
 
 cdef extern from "math.h":
+    cdef extern double fabs(double x)
     cdef extern double exp(double x)
     cdef extern double log(double x)
     cdef extern double sqrt(double x)
@@ -342,7 +343,7 @@ def _binary_sgd(self,
         elif penalty == 1:
             eta_lmbda = eta * lmbda
             for j in xrange(n_features):
-                scale = W[k, j] - eta_lmbda
+                scale = fabs(W[k, j]) - eta_lmbda
                 if scale < 0:
                     W[k, j] = 0
                 elif W[k, j] < 0:
