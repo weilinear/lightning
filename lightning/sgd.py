@@ -28,13 +28,15 @@ from .sgd_fast import MulticlassSquaredHinge
 
 class SGDClassifier(BaseClassifier, ClassifierMixin):
 
-    def __init__(self, loss="hinge", multiclass="one-vs-rest", lmbda=0.01,
+    def __init__(self, loss="hinge", penalty="l2",
+                 multiclass="one-vs-rest", lmbda=0.01,
                  kernel="linear", gamma=0.1, coef0=1, degree=4,
                  learning_rate="pegasos", eta0=0.03, power_t=0.5,
                  epsilon=0.01, fit_intercept=True, intercept_decay=1.0,
                  n_components=0, max_iter=10, random_state=None,
                  cache_mb=500, verbose=0, n_jobs=1):
         self.loss = loss
+        self.penalty = penalty
         self.multiclass = multiclass
         self.lmbda = lmbda
         self.kernel = kernel
@@ -78,6 +80,13 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         }
         return losses[self.loss]
 
+    def _get_penalty(self):
+        penalties = {
+            "l2" : 2,
+            "l1/l2" : 12
+        }
+        return penalties[self.penalty]
+
     def _get_learning_rate(self):
         learning_rates = {"constant": 1, "pegasos": 2, "invscaling": 3}
         return learning_rates[self.learning_rate]
@@ -117,7 +126,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         elif self.multiclass == "natural":
             _multiclass_sgd(self, self.coef_, self.intercept_,
                  ds, y.astype(np.int32),
-                 self._get_multiclass_loss(),
+                 self._get_multiclass_loss(), self._get_penalty(),
                  self.n_components,
                  self.lmbda, self._get_learning_rate(), self.eta0,
                  self.power_t, self.fit_intercept, self.intercept_decay,

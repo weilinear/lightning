@@ -534,6 +534,7 @@ def _multiclass_sgd(self,
                     Dataset X,
                     np.ndarray[int, ndim=1] y,
                     MulticlassLossFunction loss,
+                    int penalty,
                     int n_components,
                     double lmbda,
                     int learning_rate,
@@ -550,9 +551,9 @@ def _multiclass_sgd(self,
     cdef Py_ssize_t n_vectors = W.shape[0]
 
     # Initialization
-    cdef int it, i, l
+    cdef int it, i, l, j
     cdef long t = 1
-    cdef double pred, eta, scale
+    cdef double pred, eta, scale, norm
     cdef double intercept = 0.0
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
     w_scales = np.ones(n_vectors, dtype=np.float64)
@@ -602,14 +603,27 @@ def _multiclass_sgd(self,
                     intercept_decay, eta, linear_kernel, fit_intercept)
 
         # Regularize.
-        scale = (1 - lmbda * eta)
-        for l in xrange(n_vectors):
-            w_scales[l] *= scale
+        if penalty == 2:
+            scale = (1 - lmbda * eta)
+            for l in xrange(n_vectors):
+                w_scales[l] *= scale
 
-            # Take care of possible underflow.
-            if w_scales[l] < 1e-9:
-                W[l] *= w_scales[l]
-                w_scales[l] = 1.0
+                # Take care of possible underflow.
+                if w_scales[l] < 1e-9:
+                    W[l] *= w_scales[l]
+                    w_scales[l] = 1.0
+
+        elif penalty == 12:
+            for j in xrange(n_features):
+                norm = 0
+                for l in xrange(n_vectors):
+                    norm += W[l, j] * W[l, j]
+                norm = sqrt(norm)
+                scale = 1 - eta * lmbda / norm
+                if scale < 0:
+                    scale = 0
+                for l in xrange(n_vectors):
+                    W[l, j] *= scale
 
         # Update support vector set.
         if not linear_kernel:

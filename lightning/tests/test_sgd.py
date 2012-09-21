@@ -87,6 +87,14 @@ def test_multiclass_hinge_sgd():
             assert_greater(clf.score(data, mult_target), 0.78)
 
 
+def test_multiclass_hinge_sgd_l1l2():
+    for data in (mult_dense, mult_csr):
+        clf = SGDClassifier(loss="hinge", penalty="l1/l2",
+                            multiclass="natural", random_state=0)
+        clf.fit(data, mult_target)
+        assert_greater(clf.score(data, mult_target), 0.75)
+
+
 def test_multiclass_squared_hinge_sgd():
     for data in (mult_dense, mult_csr):
         for fit_intercept in (True, False):
