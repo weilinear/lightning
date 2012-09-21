@@ -82,6 +82,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
 
     def _get_penalty(self):
         penalties = {
+            "l1" : 1,
             "l2" : 2,
             "l1/l2" : 12
         }
@@ -113,7 +114,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                 _binary_sgd(self,
                             self.coef_, self.intercept_, i,
                             ds, Y[:, i],
-                            self._get_loss(),
+                            self._get_loss(), self._get_penalty(),
                             self.n_components,
                             self.lmbda,
                             self._get_learning_rate(),

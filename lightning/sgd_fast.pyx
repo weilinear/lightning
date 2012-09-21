@@ -266,6 +266,7 @@ def _binary_sgd(self,
                 Dataset X,
                 np.ndarray[double, ndim=1] y,
                 LossFunction loss,
+                int penalty,
                 int n_components,
                 double lmbda,
                 int learning_rate,
@@ -281,9 +282,10 @@ def _binary_sgd(self,
     cdef Py_ssize_t n_features = X.get_n_features()
 
     # Initialization
-    cdef int n, i
-    cdef long t = 1
+    cdef int n, i, j, jj
+    cdef long t
     cdef double update, update_eta, update_eta_scaled, pred, eta
+    cdef double scale, eta_lmbda
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
 
@@ -335,7 +337,18 @@ def _binary_sgd(self,
                 intercepts[k] += update_eta * intercept_decay
 
         # Regularize.
-        w_scale *= (1 - lmbda * eta)
+        if penalty == 2:
+            w_scale *= (1 - lmbda * eta)
+        elif penalty == 1:
+            eta_lmbda = eta * lmbda
+            for j in xrange(n_features):
+                scale = W[k, j] - eta_lmbda
+                if scale < 0:
+                    W[k, j] = 0
+                elif W[k, j] < 0:
+                    W[k, j] = -scale
+                else:
+                    W[k, j] = scale
 
         # Take care of possible underflow.
         if w_scale < 1e-9:
