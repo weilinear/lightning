@@ -260,6 +260,53 @@ cdef double _get_eta(int learning_rate, double lmbda,
     return eta
 
 
+cdef void _l1_regularize(double eta,
+                         double lmbda,
+                         double* delta,
+                         long* timestamps,
+                         np.ndarray[double, ndim=2, mode='c'] W,
+                         double* data,
+                         int* indices,
+                         int n_nz,
+                         int k,
+                         long t):
+    cdef int j, jj
+    cdef double scale
+
+    delta[t] = delta[t-1] + eta * lmbda
+
+    for jj in xrange(n_nz):
+        j = indices[jj]
+
+        scale = fabs(W[k, j]) - (delta[t] - delta[timestamps[j]])
+        if scale <= 0:
+            W[k, j] = 0
+        elif W[k, j] < 0:
+            W[k, j] = -scale
+        else:
+            W[k, j] = scale
+
+        timestamps[j] = t
+
+
+cdef void _l1_finalize(double* delta,
+                       long* timestamps,
+                       np.ndarray[double, ndim=2, mode='c'] W,
+                       int k,
+                       long t):
+    cdef int n_features = W.shape[1]
+    cdef int j
+    for j in xrange(n_features):
+        if timestamps[j] < t:
+            scale = fabs(W[k, j]) - (delta[t] - delta[timestamps[j]])
+            if scale <= 0:
+                W[k, j] = 0
+            elif W[k, j] < 0:
+                W[k, j] = -scale
+            else:
+                W[k, j] = scale
+
+
 def _binary_sgd(self,
                 np.ndarray[double, ndim=2, mode='c'] W,
                 np.ndarray[double, ndim=1] intercepts,
@@ -283,12 +330,17 @@ def _binary_sgd(self,
     cdef Py_ssize_t n_features = X.get_n_features()
 
     # Initialization
-    cdef int n, i, j, jj
+    cdef int i
     cdef long t
     cdef double update, update_eta, update_eta_scaled, pred, eta
-    cdef double scale, eta_lmbda
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
+
+    cdef np.ndarray[long, ndim=1, mode='c'] timestamps
+    timestamps = np.zeros(n_features, dtype=np.int64)
+
+    cdef np.ndarray[double, ndim=1, mode='c'] delta
+    delta = np.zeros(max_iter + 1, dtype=np.float64)
 
     # Kernel
     cdef int linear_kernel = 1
@@ -341,15 +393,9 @@ def _binary_sgd(self,
         if penalty == 2:
             w_scale *= (1 - lmbda * eta)
         elif penalty == 1:
-            eta_lmbda = eta * lmbda
-            for j in xrange(n_features):
-                scale = fabs(W[k, j]) - eta_lmbda
-                if scale < 0:
-                    W[k, j] = 0
-                elif W[k, j] < 0:
-                    W[k, j] = -scale
-                else:
-                    W[k, j] = scale
+            _l1_regularize(eta, lmbda,
+                           <double*>delta.data, <long*>timestamps.data,
+                           W, data, indices, n_nz, k, t)
 
         # Take care of possible underflow.
         if w_scale < 1e-9:
@@ -367,8 +413,10 @@ def _binary_sgd(self,
         if n_components > 0 and kds.n_sv() >= n_components:
             break
 
-    # Return unscaled weight vector.
-    if w_scale != 1.0:
+    if penalty == 1:
+        _l1_finalize(<double*>delta.data, <long*>timestamps.data,
+                     W, k, t)
+    elif penalty == 2 and w_scale != 1.0:
         W[k] *= w_scale
 
 
