@@ -336,7 +336,7 @@ def _binary_sgd(self,
     cdef Py_ssize_t n_features = X.get_n_features()
 
     # Initialization
-    cdef int i, j, jj
+    cdef int i
     cdef long t
     cdef double update, update_eta, update_eta_scaled, pred, eta, scale
     cdef double w_scale = 1.0
@@ -643,7 +643,7 @@ cdef void _l1l2_finalize(double* delta,
     cdef int n_features = W.shape[1]
     cdef int n_vectors = W.shape[0]
     cdef double norm
-    cdef int j
+    cdef int j, l
 
     for j in xrange(n_features):
 
@@ -685,7 +685,7 @@ def _multiclass_sgd(self,
     cdef Py_ssize_t n_vectors = W.shape[0]
 
     # Initialization
-    cdef int it, i, l, jj
+    cdef int it, i, l
     cdef long t
     cdef double pred, eta, scale, norm
     cdef double intercept = 0.0
@@ -730,8 +730,8 @@ def _multiclass_sgd(self,
         # L1/L2 regularization.
         if penalty == 12:
             _l1l2_update(eta, lmbda,
-                       <double*>delta.data, <long*>timestamps.data,
-                       W, data, indices, n_nz, t)
+                         <double*>delta.data, <long*>timestamps.data,
+                         W, data, indices, n_nz, t)
 
         for l in xrange(n_vectors):
             if linear_kernel:
