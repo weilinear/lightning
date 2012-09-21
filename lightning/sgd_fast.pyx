@@ -589,6 +589,63 @@ cdef class MulticlassLog(MulticlassLossFunction):
                 if fit_intercept:
                     intercepts[l] += u * intercept_decay
 
+cdef void _l1l2_regularize(double eta,
+                         double lmbda,
+                         double* delta,
+                         long* timestamps,
+                         np.ndarray[double, ndim=2, mode='c'] W,
+                         double* data,
+                         int* indices,
+                         int n_nz,
+                         long t):
+    cdef int j, jj, l
+    cdef double scale, norm
+    cdef int n_vectors = W.shape[0]
+
+    delta[t] = delta[t-1] + eta * lmbda
+
+    for jj in xrange(n_nz):
+        j = indices[jj]
+
+        norm = 0
+        for l in xrange(n_vectors):
+            norm += W[l, j] * W[l, j]
+        norm = sqrt(norm)
+
+        scale = 1 - (delta[t] - delta[timestamps[j]]) / norm
+        if scale < 0:
+            scale = 0
+        for l in xrange(n_vectors):
+            W[l, j] *= scale
+
+        timestamps[j] = t
+
+
+cdef void _l1l2_finalize(double* delta,
+                       long* timestamps,
+                       np.ndarray[double, ndim=2, mode='c'] W,
+                       long t):
+    cdef int n_features = W.shape[1]
+    cdef int n_vectors = W.shape[0]
+    cdef double norm
+    cdef int j
+
+    for j in xrange(n_features):
+
+        if timestamps[j] == t:
+            continue
+
+        norm = 0
+        for l in xrange(n_vectors):
+            norm += W[l, j] * W[l, j]
+        norm = sqrt(norm)
+
+        scale = 1 - (delta[t] - delta[timestamps[j]]) / norm
+        if scale < 0:
+            scale = 0
+        for l in xrange(n_vectors):
+            W[l, j] *= scale
+
 
 def _multiclass_sgd(self,
                     np.ndarray[double, ndim=2, mode='c'] W,
@@ -615,7 +672,7 @@ def _multiclass_sgd(self,
     # Initialization
     cdef int it, i, l, jj
     cdef long t
-    cdef double pred, eta, scale, norm
+    cdef double pred, eta, scale
     cdef double intercept = 0.0
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
     w_scales = np.ones(n_vectors, dtype=np.float64)
@@ -682,23 +739,9 @@ def _multiclass_sgd(self,
                     w_scales[l] = 1.0
 
         elif penalty == 12:
-            delta[t] = delta[t-1] + eta * lmbda
-
-            for jj in xrange(n_nz):
-                j = indices[jj]
-
-                norm = 0
-                for l in xrange(n_vectors):
-                    norm += W[l, j] * W[l, j]
-                norm = sqrt(norm)
-
-                scale = 1 - (delta[t] - delta[timestamps[j]]) / norm
-                if scale < 0:
-                    scale = 0
-                for l in xrange(n_vectors):
-                    W[l, j] *= scale
-
-                timestamps[j] = t
+            _l1l2_regularize(eta, lmbda,
+                             <double*>delta.data, <long*>timestamps.data,
+                             W, data, indices, n_nz, t)
 
         # Update support vector set.
         if not linear_kernel:
@@ -717,6 +760,12 @@ def _multiclass_sgd(self,
             break
 
     # Return unscaled weight vector.
-    for l in xrange(n_vectors):
-        if w_scales[l] != 1.0:
-            W[l] *= w_scales[l]
+
+    if penalty == 2:
+        for l in xrange(n_vectors):
+            if w_scales[l] != 1.0:
+                W[l] *= w_scales[l]
+    elif penalty == 12:
+        _l1l2_finalize(<double*>delta.data, <long*>timestamps.data,
+                       W, t)
+
