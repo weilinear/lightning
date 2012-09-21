@@ -260,25 +260,27 @@ cdef double _get_eta(int learning_rate, double lmbda,
     return eta
 
 
-cdef void _l1_regularize(double eta,
-                         double lmbda,
-                         double* delta,
-                         long* timestamps,
-                         np.ndarray[double, ndim=2, mode='c'] W,
-                         double* data,
-                         int* indices,
-                         int n_nz,
-                         int k,
-                         long t):
+cdef void _l1_update(double eta,
+                     double lmbda,
+                     double* delta,
+                     long* timestamps,
+                     np.ndarray[double, ndim=2, mode='c'] W,
+                     double* data,
+                     int* indices,
+                     int n_nz,
+                     int k,
+                     long t):
     cdef int j, jj
     cdef double scale
-
-    delta[t] = delta[t-1] + eta * lmbda
+    cdef long tm1 = t - 1
 
     for jj in xrange(n_nz):
         j = indices[jj]
 
-        scale = fabs(W[k, j]) - (delta[t] - delta[timestamps[j]])
+        if timestamps[j] == tm1:
+            continue
+
+        scale = fabs(W[k, j]) - (delta[tm1] - delta[timestamps[j]])
         if scale <= 0:
             W[k, j] = 0
         elif W[k, j] < 0:
@@ -286,8 +288,9 @@ cdef void _l1_regularize(double eta,
         else:
             W[k, j] = scale
 
-        timestamps[j] = t
+        timestamps[j] = tm1
 
+    delta[t] = delta[tm1] + eta * lmbda
 
 cdef void _l1_finalize(double* delta,
                        long* timestamps,
@@ -296,15 +299,18 @@ cdef void _l1_finalize(double* delta,
                        long t):
     cdef int n_features = W.shape[1]
     cdef int j
+    cdef double scale
     for j in xrange(n_features):
-        if timestamps[j] < t:
-            scale = fabs(W[k, j]) - (delta[t] - delta[timestamps[j]])
-            if scale <= 0:
-                W[k, j] = 0
-            elif W[k, j] < 0:
-                W[k, j] = -scale
-            else:
-                W[k, j] = scale
+        if timestamps[j] == t:
+            continue
+
+        scale = fabs(W[k, j]) - (delta[t] - delta[timestamps[j]])
+        if scale <= 0:
+            W[k, j] = 0
+        elif W[k, j] < 0:
+            W[k, j] = -scale
+        else:
+            W[k, j] = scale
 
 
 def _binary_sgd(self,
@@ -330,9 +336,9 @@ def _binary_sgd(self,
     cdef Py_ssize_t n_features = X.get_n_features()
 
     # Initialization
-    cdef int i
+    cdef int i, j, jj
     cdef long t
-    cdef double update, update_eta, update_eta_scaled, pred, eta
+    cdef double update, update_eta, update_eta_scaled, pred, eta, scale
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
 
@@ -362,10 +368,19 @@ def _binary_sgd(self,
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance.
         i = index[(t-1) % n_samples]
+        eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
 
         # Compute current prediction.
         if linear_kernel:
             X.get_row_ptr(i, &indices, &data, &n_nz)
+
+        # L1-regularization.
+        if penalty == 1:
+            _l1_update(eta, lmbda,
+                       <double*>delta.data, <long*>timestamps.data,
+                       W, data, indices, n_nz, k, t)
+
+        if linear_kernel:
             pred = _dot(W, k, indices, data, n_nz)
         else:
             pred = _kernel_dot(W, k, kds, i)
@@ -373,7 +388,6 @@ def _binary_sgd(self,
         pred *= w_scale
         pred += intercepts[k]
 
-        eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
         update = loss.get_update(pred, y[i])
 
         # Update if necessary.
@@ -389,13 +403,9 @@ def _binary_sgd(self,
             if fit_intercept:
                 intercepts[k] += update_eta * intercept_decay
 
-        # Regularize.
+        # L2-regularization.
         if penalty == 2:
             w_scale *= (1 - lmbda * eta)
-        elif penalty == 1:
-            _l1_regularize(eta, lmbda,
-                           <double*>delta.data, <long*>timestamps.data,
-                           W, data, indices, n_nz, k, t)
 
         # Take care of possible underflow.
         if w_scale < 1e-9:
@@ -413,6 +423,7 @@ def _binary_sgd(self,
         if n_components > 0 and kds.n_sv() >= n_components:
             break
 
+    # Finalize.
     if penalty == 1:
         _l1_finalize(<double*>delta.data, <long*>timestamps.data,
                      W, k, t)
@@ -589,36 +600,40 @@ cdef class MulticlassLog(MulticlassLossFunction):
                 if fit_intercept:
                     intercepts[l] += u * intercept_decay
 
-cdef void _l1l2_regularize(double eta,
-                         double lmbda,
-                         double* delta,
-                         long* timestamps,
-                         np.ndarray[double, ndim=2, mode='c'] W,
-                         double* data,
-                         int* indices,
-                         int n_nz,
-                         long t):
+cdef void _l1l2_update(double eta,
+                       double lmbda,
+                       double* delta,
+                       long* timestamps,
+                       np.ndarray[double, ndim=2, mode='c'] W,
+                       double* data,
+                       int* indices,
+                       int n_nz,
+                       long t):
     cdef int j, jj, l
     cdef double scale, norm
     cdef int n_vectors = W.shape[0]
-
-    delta[t] = delta[t-1] + eta * lmbda
+    cdef long tm1 = t - 1
 
     for jj in xrange(n_nz):
         j = indices[jj]
+
+        if timestamps[j] == tm1:
+            continue
 
         norm = 0
         for l in xrange(n_vectors):
             norm += W[l, j] * W[l, j]
         norm = sqrt(norm)
 
-        scale = 1 - (delta[t] - delta[timestamps[j]]) / norm
+        scale = 1 - (delta[tm1] - delta[timestamps[j]]) / norm
         if scale < 0:
             scale = 0
         for l in xrange(n_vectors):
             W[l, j] *= scale
 
-        timestamps[j] = t
+        timestamps[j] = tm1
+
+    delta[t] = delta[tm1] + eta * lmbda
 
 
 cdef void _l1l2_finalize(double* delta,
@@ -672,7 +687,7 @@ def _multiclass_sgd(self,
     # Initialization
     cdef int it, i, l, jj
     cdef long t
-    cdef double pred, eta, scale
+    cdef double pred, eta, scale, norm
     cdef double intercept = 0.0
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
     w_scales = np.ones(n_vectors, dtype=np.float64)
@@ -706,12 +721,17 @@ def _multiclass_sgd(self,
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance.
         i = index[(t-1) % n_samples]
-
         eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
 
         # Compute current prediction.
         if linear_kernel:
             X.get_row_ptr(i, &indices, &data, &n_nz)
+
+        # L1/L2 regularization.
+        if penalty == 12:
+            _l1l2_update(eta, lmbda,
+                       <double*>delta.data, <long*>timestamps.data,
+                       W, data, indices, n_nz, t)
 
         for l in xrange(n_vectors):
             if linear_kernel:
@@ -727,7 +747,7 @@ def _multiclass_sgd(self,
                     i, W, <double*>w_scales.data, <double*>intercepts.data,
                     intercept_decay, eta, linear_kernel, fit_intercept)
 
-        # Regularize.
+        # L2 regularization.
         if penalty == 2:
             scale = (1 - lmbda * eta)
             for l in xrange(n_vectors):
@@ -737,11 +757,6 @@ def _multiclass_sgd(self,
                 if w_scales[l] < 1e-9:
                     W[l] *= w_scales[l]
                     w_scales[l] = 1.0
-
-        elif penalty == 12:
-            _l1l2_regularize(eta, lmbda,
-                             <double*>delta.data, <long*>timestamps.data,
-                             W, data, indices, n_nz, t)
 
         # Update support vector set.
         if not linear_kernel:
@@ -759,8 +774,7 @@ def _multiclass_sgd(self,
         if n_components > 0 and kds.n_sv() >= n_components:
             break
 
-    # Return unscaled weight vector.
-
+    # Finalize.
     if penalty == 2:
         for l in xrange(n_vectors):
             if w_scales[l] != 1.0:
