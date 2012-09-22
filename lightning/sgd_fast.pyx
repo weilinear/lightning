@@ -39,6 +39,36 @@ cdef class LossFunction:
     cpdef double get_update(self, double p, double y):
         raise NotImplementedError()
 
+    cpdef double max_gradient(self, Dataset X):
+        cdef int i, j, jj
+        cdef int n_samples = X.get_n_samples()
+        cdef double norm, G = 0
+
+        cdef double* data
+        cdef int* indices
+        cdef int n_nz
+
+        for i in xrange(n_samples):
+            X.get_row_ptr(i, &indices, &data, &n_nz)
+
+            norm = 0
+            for jj in xrange(n_nz):
+                norm += data[jj] * data[jj]
+            G += sqrt(norm)
+
+        return G
+
+    cpdef double max_loss(self, Dataset X):
+        raise NotImplementedError()
+
+    cpdef double max_diameter(self, Dataset X, int penalty, double lmbda):
+        if penalty == 1:
+            return self.max_loss(X) / lmbda
+        elif penalty == 2:
+            return sqrt(self.max_loss(X) / lmbda)
+        else:
+            raise ValueError("Unknown penalty.")
+
 
 cdef class ModifiedHuber(LossFunction):
 
@@ -80,6 +110,9 @@ cdef class Hinge(LossFunction):
             return y
         return 0.0
 
+    cpdef double max_loss(self, Dataset X):
+        return X.get_n_samples()
+
 
 cdef class SquaredHinge(LossFunction):
 
@@ -120,6 +153,9 @@ cdef class Log(LossFunction):
         if z < -18.0:
             return y
         return y / (exp(z) + 1.0)
+
+    cpdef double max_loss(self, Dataset X):
+        return X.get_n_samples() * log(2.0)
 
 
 cdef class SparseLog(LossFunction):

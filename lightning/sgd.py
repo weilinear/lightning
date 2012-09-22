@@ -107,6 +107,14 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
 
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
 
+        eta0 = self.eta0
+        if self.learning_rate == "invscaling" and self.power_t == 0.5 and \
+           self.eta0 == "auto":
+               loss = self._get_loss()
+               D = loss.max_diameter(ds, self._get_penalty(), self.lmbda)
+               G = loss.max_gradient(ds)
+               eta0 = D / (4 * G)
+
         if n_vectors == 1 or self.multiclass == "one-vs-rest":
             Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
                                   dtype=np.float64)
@@ -118,7 +126,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                             self.n_components,
                             self.lmbda,
                             self._get_learning_rate(),
-                            self.eta0, self.power_t,
+                            eta0, self.power_t,
                             self.fit_intercept,
                             self.intercept_decay,
                             self.max_iter * n_samples,
@@ -129,7 +137,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                  ds, y.astype(np.int32),
                  self._get_multiclass_loss(), self._get_penalty(),
                  self.n_components,
-                 self.lmbda, self._get_learning_rate(), self.eta0,
+                 self.lmbda, self._get_learning_rate(), eta0,
                  self.power_t, self.fit_intercept, self.intercept_decay,
                  int(self.max_iter * n_samples), rs, self.verbose)
 

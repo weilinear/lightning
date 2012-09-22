@@ -9,7 +9,11 @@ from nose.tools import assert_raises, assert_true, assert_equal, \
 from sklearn.utils.testing import assert_greater
 from sklearn.datasets.samples_generator import make_classification
 
-from lightning.sgd import SGDClassifier, SGDClassifier
+from lightning.sgd import SGDClassifier
+from lightning.sgd_fast import Hinge
+from lightning.sgd_fast import Log
+
+from lightning.dataset_fast import ContiguousDataset
 from lightning.dataset_fast import KernelDataset
 
 
@@ -159,3 +163,20 @@ def test_n_components_multiclass_natural():
         clf.fit(mult_dense, mult_target)
         assert_equal(clf.n_nonzero(), 50)
         assert_greater(clf.score(mult_dense, mult_target), 0.38)
+
+
+def test_hinge_constants():
+    ds = ContiguousDataset(bin_dense)
+    hinge = Hinge()
+    G = hinge.max_gradient(ds)
+    D = hinge.max_diameter(ds, 2, 0.0125)
+    D = hinge.max_diameter(ds, 1, 0.0125)
+
+
+def test_log_constants():
+    ds = ContiguousDataset(bin_dense)
+    log = Log()
+    G = log.max_gradient(ds)
+    D = log.max_diameter(ds, 2, 0.0125)
+    D = log.max_diameter(ds, 1, 0.0125)
+
