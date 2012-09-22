@@ -19,6 +19,7 @@ from libcpp.list cimport list
 from lightning.dataset_fast cimport KernelDataset
 from lightning.dataset_fast cimport Dataset
 
+ctypedef np.int64_t LONG
 
 cdef extern from "math.h":
     cdef extern double fabs(double x)
@@ -251,7 +252,7 @@ cdef void _add(np.ndarray[double, ndim=2, mode='c'] W,
 
 
 cdef double _get_eta(int learning_rate, double lmbda,
-                     double eta0, double power_t, long t):
+                     double eta0, double power_t, LONG t):
     cdef double eta = eta0
     if learning_rate == 2: # PEGASOS
         eta = 1.0 / (lmbda * t)
@@ -263,16 +264,16 @@ cdef double _get_eta(int learning_rate, double lmbda,
 cdef void _l1_update(double eta,
                      double lmbda,
                      double* delta,
-                     long* timestamps,
+                     LONG* timestamps,
                      np.ndarray[double, ndim=2, mode='c'] W,
                      double* data,
                      int* indices,
                      int n_nz,
                      int k,
-                     long t):
+                     LONG t):
     cdef int j, jj
     cdef double scale
-    cdef long tm1 = t - 1
+    cdef LONG tm1 = t - 1
 
     for jj in xrange(n_nz):
         j = indices[jj]
@@ -293,10 +294,10 @@ cdef void _l1_update(double eta,
     delta[t] = delta[tm1] + eta * lmbda
 
 cdef void _l1_finalize(double* delta,
-                       long* timestamps,
+                       LONG* timestamps,
                        np.ndarray[double, ndim=2, mode='c'] W,
                        int k,
-                       long t):
+                       LONG t):
     cdef int n_features = W.shape[1]
     cdef int j
     cdef double scale
@@ -337,12 +338,12 @@ def _binary_sgd(self,
 
     # Initialization
     cdef int i
-    cdef long t
+    cdef LONG t
     cdef double update, update_eta, update_eta_scaled, pred, eta, scale
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
 
-    cdef np.ndarray[long, ndim=1, mode='c'] timestamps
+    cdef np.ndarray[LONG, ndim=1, mode='c'] timestamps
     timestamps = np.zeros(n_features, dtype=np.int64)
 
     cdef np.ndarray[double, ndim=1, mode='c'] delta
@@ -377,7 +378,7 @@ def _binary_sgd(self,
         # L1-regularization.
         if penalty == 1:
             _l1_update(eta, lmbda,
-                       <double*>delta.data, <long*>timestamps.data,
+                       <double*>delta.data, <LONG*>timestamps.data,
                        W, data, indices, n_nz, k, t)
 
         if linear_kernel:
@@ -425,7 +426,7 @@ def _binary_sgd(self,
 
     # Finalize.
     if penalty == 1:
-        _l1_finalize(<double*>delta.data, <long*>timestamps.data,
+        _l1_finalize(<double*>delta.data, <LONG*>timestamps.data,
                      W, k, t)
     elif penalty == 2 and w_scale != 1.0:
         W[k] *= w_scale
@@ -603,16 +604,16 @@ cdef class MulticlassLog(MulticlassLossFunction):
 cdef void _l1l2_update(double eta,
                        double lmbda,
                        double* delta,
-                       long* timestamps,
+                       LONG* timestamps,
                        np.ndarray[double, ndim=2, mode='c'] W,
                        double* data,
                        int* indices,
                        int n_nz,
-                       long t):
+                       LONG t):
     cdef int j, jj, l
     cdef double scale, norm
     cdef int n_vectors = W.shape[0]
-    cdef long tm1 = t - 1
+    cdef LONG tm1 = t - 1
 
     for jj in xrange(n_nz):
         j = indices[jj]
@@ -637,9 +638,9 @@ cdef void _l1l2_update(double eta,
 
 
 cdef void _l1l2_finalize(double* delta,
-                       long* timestamps,
-                       np.ndarray[double, ndim=2, mode='c'] W,
-                       long t):
+                         LONG* timestamps,
+                         np.ndarray[double, ndim=2, mode='c'] W,
+                         LONG t):
     cdef int n_features = W.shape[1]
     cdef int n_vectors = W.shape[0]
     cdef double norm
@@ -686,7 +687,7 @@ def _multiclass_sgd(self,
 
     # Initialization
     cdef int it, i, l
-    cdef long t
+    cdef LONG t
     cdef double pred, eta, scale, norm
     cdef double intercept = 0.0
     cdef np.ndarray[double, ndim=1, mode='c'] w_scales
@@ -695,7 +696,7 @@ def _multiclass_sgd(self,
     scores = np.ones(n_vectors, dtype=np.float64)
     cdef int all_zero
 
-    cdef np.ndarray[long, ndim=1, mode='c'] timestamps
+    cdef np.ndarray[LONG, ndim=1, mode='c'] timestamps
     timestamps = np.zeros(n_features, dtype=np.int64)
 
     cdef np.ndarray[double, ndim=1, mode='c'] delta
@@ -730,7 +731,7 @@ def _multiclass_sgd(self,
         # L1/L2 regularization.
         if penalty == 12:
             _l1l2_update(eta, lmbda,
-                         <double*>delta.data, <long*>timestamps.data,
+                         <double*>delta.data, <LONG*>timestamps.data,
                          W, data, indices, n_nz, t)
 
         for l in xrange(n_vectors):
@@ -780,6 +781,6 @@ def _multiclass_sgd(self,
             if w_scales[l] != 1.0:
                 W[l] *= w_scales[l]
     elif penalty == 12:
-        _l1l2_finalize(<double*>delta.data, <long*>timestamps.data,
+        _l1l2_finalize(<double*>delta.data, <LONG*>timestamps.data,
                        W, t)
 
