@@ -1,11 +1,14 @@
 # Author: Mathieu Blondel
 # License: BSD
 
+import warnings
+
 import numpy as np
 
 from sklearn.base import ClassifierMixin
 from sklearn.utils import check_random_state
 from sklearn.utils.extmath import safe_sparse_dot
+from sklearn.utils.validation import assert_all_finite
 
 from .base import BaseClassifier
 
@@ -59,25 +62,24 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         self.support_vectors_ = None
 
     def _get_loss(self):
-        losses = {
-            "modified_huber" : ModifiedHuber(),
-            "hinge" : Hinge(1.0),
-            "squared_hinge" : SquaredHinge(1.0),
-            "perceptron" : Hinge(0.0),
-            "log": Log(),
-            "sparse_log" : SparseLog(),
-            "squared" : SquaredLoss(),
-            "huber" : Huber(self.epsilon),
-            "epsilon_insensitive" : EpsilonInsensitive(self.epsilon)
-        }
-        return losses[self.loss]
-
-    def _get_multiclass_loss(self):
-        losses = {
-            "log" : MulticlassLog(),
-            "hinge" : MulticlassHinge(),
-            "squared_hinge" : MulticlassSquaredHinge(),
-        }
+        if self.multiclass == "natural":
+            losses = {
+                "log" : MulticlassLog(),
+                "hinge" : MulticlassHinge(),
+                "squared_hinge" : MulticlassSquaredHinge(),
+            }
+        else:
+            losses = {
+                "modified_huber" : ModifiedHuber(),
+                "hinge" : Hinge(1.0),
+                "squared_hinge" : SquaredHinge(1.0),
+                "perceptron" : Hinge(0.0),
+                "log": Log(),
+                "sparse_log" : SparseLog(),
+                "squared" : SquaredLoss(),
+                "huber" : Huber(self.epsilon),
+                "epsilon_insensitive" : EpsilonInsensitive(self.epsilon)
+            }
         return losses[self.loss]
 
     def _get_penalty(self):
@@ -107,13 +109,14 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
 
         self.intercept_ = np.zeros(n_vectors, dtype=np.float64)
 
+        loss = self._get_loss()
+        penalty = self._get_penalty()
         eta0 = self.eta0
         if self.learning_rate == "invscaling" and self.power_t == 0.5 and \
            self.eta0 == "auto":
-               loss = self._get_loss()
-               D = loss.max_diameter(ds, self._get_penalty(), self.lmbda)
-               G = loss.max_gradient(ds)
-               eta0 = D / (4 * G)
+               D = loss.max_diameter(ds, n_vectors, penalty, self.lmbda)
+               G = loss.max_gradient(ds, n_vectors)
+               eta0 = D / (4.0 * G)
 
         if n_vectors == 1 or self.multiclass == "one-vs-rest":
             Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
@@ -121,28 +124,29 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
             for i in xrange(n_vectors):
                 _binary_sgd(self,
                             self.coef_, self.intercept_, i,
-                            ds, Y[:, i],
-                            self._get_loss(), self._get_penalty(),
-                            self.n_components,
-                            self.lmbda,
+                            ds, Y[:, i], loss, penalty,
+                            self.n_components, self.lmbda,
                             self._get_learning_rate(),
                             eta0, self.power_t,
                             self.fit_intercept,
                             self.intercept_decay,
-                            self.max_iter * n_samples,
+                            int(self.max_iter * n_samples),
                             rs, self.verbose)
 
         elif self.multiclass == "natural":
             _multiclass_sgd(self, self.coef_, self.intercept_,
-                 ds, y.astype(np.int32),
-                 self._get_multiclass_loss(), self._get_penalty(),
-                 self.n_components,
-                 self.lmbda, self._get_learning_rate(), eta0,
-                 self.power_t, self.fit_intercept, self.intercept_decay,
+                 ds, y.astype(np.int32), loss, penalty,
+                 self.n_components, self.lmbda, self._get_learning_rate(),
+                 eta0, self.power_t, self.fit_intercept, self.intercept_decay,
                  int(self.max_iter * n_samples), rs, self.verbose)
 
         else:
             raise ValueError("Wrong value for multiclass.")
+
+        try:
+            assert_all_finite(self.coef_)
+        except ValueError:
+            warnings.warn("coef_ contains infinite values")
 
         if self.kernel != "linear":
             self._post_process(X)

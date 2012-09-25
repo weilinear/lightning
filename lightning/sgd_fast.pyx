@@ -31,15 +31,8 @@ cdef extern from "math.h":
 cdef extern from "float.h":
    double DBL_MAX
 
-cdef class LossFunction:
 
-    cpdef double loss(self, double p, double y):
-        raise NotImplementedError()
-
-    cpdef double get_update(self, double p, double y):
-        raise NotImplementedError()
-
-    cpdef double max_gradient(self, Dataset X):
+cdef double _l2_norm_sums(Dataset X, int squared):
         cdef int i, j, jj
         cdef int n_samples = X.get_n_samples()
         cdef double norm, G = 0
@@ -54,18 +47,36 @@ cdef class LossFunction:
             norm = 0
             for jj in xrange(n_nz):
                 norm += data[jj] * data[jj]
-            G += sqrt(norm)
+
+            if squared:
+                G += norm
+            else:
+                G += sqrt(norm)
 
         return G
 
-    cpdef double max_loss(self, Dataset X):
+cdef class LossFunction:
+
+    cpdef double loss(self, double p, double y):
         raise NotImplementedError()
 
-    cpdef double max_diameter(self, Dataset X, int penalty, double lmbda):
+    cpdef double get_update(self, double p, double y):
+        raise NotImplementedError()
+
+    cpdef double max_gradient(self, Dataset X, int n_vectors):
+        return _l2_norm_sums(X, False)
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        raise NotImplementedError()
+
+    cpdef double max_diameter(self, Dataset X,
+                              int n_vectors,
+                              int penalty, double lmbda):
+        cdef double loss = self.max_loss(X.get_n_samples(), n_vectors)
         if penalty == 1:
-            return self.max_loss(X) / lmbda
+            return loss / lmbda
         elif penalty == 2:
-            return sqrt(self.max_loss(X) / lmbda)
+            return sqrt(loss / lmbda)
         else:
             raise ValueError("Unknown penalty.")
 
@@ -110,8 +121,8 @@ cdef class Hinge(LossFunction):
             return y
         return 0.0
 
-    cpdef double max_loss(self, Dataset X):
-        return X.get_n_samples()
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        return n_samples
 
 
 cdef class SquaredHinge(LossFunction):
@@ -132,6 +143,12 @@ cdef class SquaredHinge(LossFunction):
         if z > 0:
             return 2 * y * z
         return 0.0
+
+    cpdef double max_gradient(self, Dataset X, int n_vectors):
+        return 2 * _l2_norm_sums(X, True)
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        return n_samples
 
 
 cdef class Log(LossFunction):
@@ -154,8 +171,8 @@ cdef class Log(LossFunction):
             return y
         return y / (exp(z) + 1.0)
 
-    cpdef double max_loss(self, Dataset X):
-        return X.get_n_samples() * log(2.0)
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        return n_samples * log(2.0)
 
 
 cdef class SparseLog(LossFunction):
@@ -192,10 +209,17 @@ cdef class SquaredLoss(LossFunction):
     cpdef double get_update(self, double p, double y):
         return y - p
 
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        # \sum_i y_i^2
+        raise NotImplementedError
+
 
 cdef class Huber(LossFunction):
 
     cdef double c
+
+    def __init__(self, double c):
+        self.c = c
 
     cpdef double loss(self, double p, double y):
         cdef double r = p - y
@@ -204,9 +228,6 @@ cdef class Huber(LossFunction):
             return 0.5 * r * r
         else:
             return self.c * abs_r - (0.5 * self.c * self.c)
-
-    def __init__(self, double c):
-        self.c = c
 
     cpdef double get_update(self, double p, double y):
         cdef double r = p - y
@@ -217,6 +238,9 @@ cdef class Huber(LossFunction):
             return -self.c
         else:
             return self.c
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        raise NotImplementedError
 
 
 cdef class EpsilonInsensitive(LossFunction):
@@ -237,6 +261,10 @@ cdef class EpsilonInsensitive(LossFunction):
             return -1
         else:
             return 0
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        # \sum_i [abs(y_i) - eps]
+        raise NotImplementedError
 
 
 cdef double _dot(np.ndarray[double, ndim=2, mode='c'] W,
@@ -508,6 +536,23 @@ cdef class MulticlassLossFunction:
                      ):
         raise NotImplementedError()
 
+    cpdef double max_gradient(self, Dataset X, int n_vectors):
+        return 2 * _l2_norm_sums(X, False)
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        raise NotImplementedError()
+
+    cpdef double max_diameter(self, Dataset X,
+                              int n_vectors,
+                              int penalty, double lmbda):
+        cdef double loss = self.max_loss(X.get_n_samples(), n_vectors)
+        if penalty == 1 or penalty == 12:
+            return loss / lmbda
+        elif penalty == 2:
+            return sqrt(loss / lmbda)
+        else:
+            raise ValueError("Unknown penalty.")
+
 cdef class MulticlassHinge(MulticlassLossFunction):
 
     cdef void update(self,
@@ -547,6 +592,9 @@ cdef class MulticlassHinge(MulticlassLossFunction):
                 scale = eta * intercept_decay
                 intercepts[k] -= scale
                 intercepts[y] += scale
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        return n_samples
 
 
 cdef class MulticlassSquaredHinge(MulticlassLossFunction):
@@ -594,6 +642,12 @@ cdef class MulticlassSquaredHinge(MulticlassLossFunction):
                 intercepts[l] -= scale
                 intercepts[y] += scale
 
+    cpdef double max_gradient(self, Dataset X, int n_vectors):
+        return 4 * (n_vectors - 1) * _l2_norm_sums(X, True)
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        return n_samples * (n_vectors - 1)
+
 
 cdef class MulticlassLog(MulticlassLossFunction):
 
@@ -636,6 +690,9 @@ cdef class MulticlassLog(MulticlassLossFunction):
 
                 if fit_intercept:
                     intercepts[l] += u * intercept_decay
+
+    cpdef double max_loss(self, int n_samples, int n_vectors):
+        return n_samples * log(<double>n_vectors)
 
 cdef void _l1l2_update(double eta,
                        double lmbda,
