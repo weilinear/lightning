@@ -131,6 +131,10 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
         elif self.penalty in ("l1", "l2"):
             penalty = 1 if self.penalty == "l1" else 2
             for k in xrange(n_vectors):
+                n_pos = np.sum(Y[:, k] == 1)
+                n_neg = n_samples - n_pos
+                tol = self.tol * max(min(n_pos, n_neg), 1) / n_samples
+
                 vinit = self.violation_init_.get(k, 0) * self.C / self.C_init
                 viol = _primal_cd(self, self.coef_, self.errors_,
                                   ds, y, Y, k, False,
@@ -138,8 +142,9 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                                   self.selection, self.search_size,
                                   self.termination, self.n_components,
                                   self.C, self.max_iter, self.shrinking, vinit,
-                                  rs, self.tol, self.callback, self.n_calls,
+                                  rs, tol, self.callback, self.n_calls,
                                   self.verbose)
+
                 if self.warm_start and not k in self.violation_init_:
                     self.violation_init_[k] = viol
 

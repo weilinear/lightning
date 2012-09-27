@@ -228,7 +228,10 @@ cdef class LossFunction:
         elif z != 0 and w[j] == -z:
             n_sv[0] -= 1
 
+        # Update w.
         w[j] += z
+
+        # If recompute b[], need to do it here.
 
         return 0
 
@@ -488,7 +491,7 @@ cdef class Squared(LossFunction):
 cdef class SquaredHinge(LossFunction):
 
     def __init__(self,
-                 int max_steps=30,
+                 int max_steps=20,
                  double sigma=0.01,
                  double beta=0.5,
                  int verbose=0):
@@ -528,8 +531,8 @@ cdef class SquaredHinge(LossFunction):
                 Lpp[0] += val * val
                 L[0] += b[i] * b[i]
 
-        Lp[0] = 2 * C * Lp[0]
-        Lpp[0] = 2 * C * Lpp[0]
+        Lp[0] = 2 * C
+        Lpp[0] = 2 * C
         L[0] *= C
 
     cdef void update(self,
@@ -901,7 +904,7 @@ def _primal_cd(self,
                double C,
                int max_iter,
                int shrinking,
-               double violation_init,
+               double Gnorm_init,
                RandomState rs,
                double tol,
                callback,
@@ -917,6 +920,7 @@ def _primal_cd(self,
     cdef int active_size = n_features
     cdef double violation_old = DBL_MAX
     cdef double violation_new
+    cdef double Gnorm_new
     cdef double Dpmax, Dp
     cdef double violation
     cdef int check_convergence = termination == "convergence"
@@ -965,6 +969,7 @@ def _primal_cd(self,
         rs.shuffle(active_set[:active_size])
 
         violation_new = 0
+        Gnorm_new = 0
         Dpmax = 0
 
         s = 0
@@ -999,15 +1004,16 @@ def _primal_cd(self,
                 if w_ptr[j] != 0:
                     n_sv += 1
 
-            # Update maximum absolute derivative.
-            violation_new = max(violation_new, violation)
-
             # Check if need to shrink.
             if shrink:
                 active_size -= 1
                 active_set[s], active_set[active_size] = \
                     active_set[active_size], active_set[s]
                 continue
+
+            # Update maximum absolute derivative.
+            violation_new = max(violation_new, violation)
+            Gnorm_new += violation
 
             # Exit if necessary.
             if check_n_sv and n_sv >= n_components:
@@ -1032,8 +1038,8 @@ def _primal_cd(self,
         if stop:
             break
 
-        if t == 0 and violation_init == 0:
-            violation_init = violation_new
+        if t == 0 and Gnorm_init == 0:
+            Gnorm_init = Gnorm_new
 
         if verbose >= 2:
             print "\nActive size:", active_size
@@ -1046,7 +1052,7 @@ def _primal_cd(self,
                         print "\nConverged at iteration", t
                     break
             else:
-                if violation_new <= tol * violation_init:
+                if Gnorm_new <= tol * Gnorm_init:
                     if active_size == n_features:
                         if verbose >= 1:
                             print "\nConverged at iteration", t
@@ -1061,7 +1067,7 @@ def _primal_cd(self,
     if verbose >= 1:
         print
 
-    return violation_init
+    return Gnorm_init
 
 
 cpdef _C_lower_bound_kernel(KernelDataset kds,
