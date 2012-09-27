@@ -531,8 +531,8 @@ cdef class SquaredHinge(LossFunction):
                 Lpp[0] += val * val
                 L[0] += b[i] * b[i]
 
-        Lp[0] = 2 * C
-        Lpp[0] = 2 * C
+        Lp[0] *= 2 * C
+        Lpp[0] *= 2 * C
         L[0] *= C
 
     cdef void update(self,
