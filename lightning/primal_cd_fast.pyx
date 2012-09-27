@@ -45,7 +45,6 @@ cdef class LossFunction:
                        int *indices,
                        double *data,
                        int n_nz,
-                       double *col,
                        double *y,
                        double *b,
                        double *Dp):
@@ -55,7 +54,7 @@ cdef class LossFunction:
         cdef double z_diff, z_old, Dj_z, cond
 
         # Compute derivatives
-        self.derivatives(j, C, indices, data, n_nz, col, y, b,
+        self.derivatives(j, C, indices, data, n_nz, y, b,
                          Dp, &Dpp, &Dj_zero)
 
         Dp[0] = w[j] + Dp[0]
@@ -76,7 +75,7 @@ cdef class LossFunction:
 
             # Update old predictions
             self.update(j, z_diff, C, indices, data, n_nz,
-                        col, y, b, &Dj_z)
+                        y, b, &Dj_z)
 
             if step == self.max_steps:
                 if self.verbose >= 3 and self.max_steps > 1:
@@ -102,7 +101,6 @@ cdef class LossFunction:
                           int *indices,
                           double *data,
                           int n_nz,
-                          double *col,
                           double *y,
                           double *b,
                           double *Lp,
@@ -117,7 +115,6 @@ cdef class LossFunction:
                      int *indices,
                      double *data,
                      int n_nz,
-                     double *col,
                      double *y,
                      double *b,
                      double *L_new):
@@ -133,7 +130,6 @@ cdef class LossFunction:
                       int *indices,
                       double *data,
                       int n_nz,
-                      double *col,
                       double *y,
                       double *b,
                       double violation_old,
@@ -151,7 +147,7 @@ cdef class LossFunction:
         cdef int step
 
         # Compute derivatives
-        self.derivatives(j, C, indices, data, n_nz, col, y, b,
+        self.derivatives(j, C, indices, data, n_nz, y, b,
                          &Lp, &Lpp, &Lj_zero)
 
         Lpp = max(Lpp, 1e-12)
@@ -204,7 +200,7 @@ cdef class LossFunction:
             cond = fabs(w[j] + z) - wj_abs - self.sigma * delta
 
             # Compute objective function value.
-            self.update(j, z_diff, C, indices, data, n_nz, col, y, b, &Lj_z)
+            self.update(j, z_diff, C, indices, data, n_nz, y, b, &Lj_z)
 
             if step == self.max_steps:
                 if self.verbose >= 3 and self.max_steps > 1:
@@ -264,7 +260,6 @@ cdef class LossFunction:
         cdef double L_tmp, Lpp_tmp
         cdef double* y_ptr
         cdef double* b_ptr
-        cdef double* Z_ptr
         cdef double z_diff, g_norm
         cdef double lmbda = 1.0
         cdef int nv = n_samples * n_vectors
@@ -281,7 +276,7 @@ cdef class LossFunction:
             Z_ptr = Z
 
             for k in xrange(n_vectors):
-                self.derivatives(j, C, indices, data, n_nz, Z_ptr, y_ptr,
+                self.derivatives(j, C, indices, data, n_nz, y_ptr,
                                  b_ptr, &g[k], &Lpp_tmp, &L_tmp)
                 L += L_tmp
                 Lpp_max = max(Lpp_max, Lpp_tmp)
@@ -355,12 +350,11 @@ cdef class LossFunction:
                 L_new = 0
                 y_ptr = <double*>Y.data
                 b_ptr = <double*>b.data
-                Z_ptr = Z
 
                 for k in xrange(n_vectors):
                     z_diff = d_old[k] - d[k]
                     self.update(j, z_diff, C, indices, data, n_nz,
-                                Z_ptr, y_ptr, b_ptr, &L_tmp)
+                                y_ptr, b_ptr, &L_tmp)
                     L_new += L_tmp
                     y_ptr += n_samples
                     b_ptr += n_samples
@@ -443,7 +437,6 @@ cdef class Squared(LossFunction):
                           int *indices,
                           double *data,
                           int n_nz,
-                          double *col,
                           double *y,
                           double *b,
                           double *Lp,
@@ -472,7 +465,6 @@ cdef class Squared(LossFunction):
                      int *indices,
                      double *data,
                      int n_nz,
-                     double *col,
                      double *y,
                      double *b,
                      double *L_new):
@@ -508,7 +500,6 @@ cdef class SquaredHinge(LossFunction):
                           int *indices,
                           double *data,
                           int n_nz,
-                          double *col,
                           double *y,
                           double *b,
                           double *Lp,
@@ -541,7 +532,6 @@ cdef class SquaredHinge(LossFunction):
                      int *indices,
                      double *data,
                      int n_nz,
-                     double *col,
                      double *y,
                      double *b,
                      double *L_new):
@@ -664,7 +654,6 @@ cdef class ModifiedHuber(LossFunction):
                           int *indices,
                           double *data,
                           int n_nz,
-                          double *col,
                           double *y,
                           double *b,
                           double *Lp,
@@ -680,7 +669,6 @@ cdef class ModifiedHuber(LossFunction):
         for ii in xrange(n_nz):
             i = indices[ii]
             val = data[ii] * y[i]
-            col[i] = val
 
             if b[i] > 2:
                 Lp[0] -= 2 * val
@@ -702,7 +690,6 @@ cdef class ModifiedHuber(LossFunction):
                      int *indices,
                      double *data,
                      int n_nz,
-                     double *col,
                      double *y,
                      double *b,
                      double *L_new):
@@ -713,7 +700,7 @@ cdef class ModifiedHuber(LossFunction):
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            b_new = b[i] + z_diff * col[i]
+            b_new = b[i] + z_diff * data[ii] * y[i]
             b[i] = b_new
 
             if b_new > 2:
@@ -744,7 +731,6 @@ cdef class Log(LossFunction):
                           int *indices,
                           double *data,
                           int n_nz,
-                          double *col,
                           double *y,
                           double *b,
                           double *Lp,
@@ -760,7 +746,6 @@ cdef class Log(LossFunction):
         for ii in xrange(n_nz):
             i = indices[ii]
             val = data[ii] * y[i]
-            col[i] = val
 
             exppred = 1 + 1 / b[i]
             tau = 1 / exppred
@@ -780,7 +765,6 @@ cdef class Log(LossFunction):
                      int *indices,
                      double *data,
                      int n_nz,
-                     double *col,
                      double *y,
                      double *b,
                      double *L_new):
@@ -791,7 +775,7 @@ cdef class Log(LossFunction):
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            b[i] /= exp(z_diff * col[i])
+            b[i] /= exp(z_diff * data[ii] * y[i])
             exppred = 1 + 1 / b[i]
             L_new[0] += log(exppred)
 
@@ -986,7 +970,7 @@ def _primal_cd(self,
             # Solve sub-problem.
             if penalty == 1:
                 shrink = loss.solve_l1(j, C, w_ptr, n_samples,
-                                       indices, data, n_nz, <double*>buf.data,
+                                       indices, data, n_nz,
                                        y_ptr, b_ptr, violation_old,
                                        &violation, &n_sv, shrinking)
             elif penalty == 12:
@@ -998,7 +982,7 @@ def _primal_cd(self,
                                          violation_old, &violation, shrinking)
             elif penalty == 2:
                 loss.solve_l2(j, C, w_ptr, indices, data, n_nz,
-                              <double*>buf.data, y_ptr, b_ptr, &Dp)
+                              y_ptr, b_ptr, &Dp)
                 Dpmax = max(Dpmax, fabs(Dp))
                 if w_ptr[j] != 0:
                     n_sv += 1
