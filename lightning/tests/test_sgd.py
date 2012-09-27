@@ -168,15 +168,15 @@ def test_n_components_multiclass_natural():
 def test_hinge_constants():
     ds = ContiguousDataset(bin_dense)
     hinge = Hinge()
-    G = hinge.max_gradient(ds)
-    D = hinge.max_diameter(ds, 2, 0.0125)
-    D = hinge.max_diameter(ds, 1, 0.0125)
+    G = hinge.max_gradient(ds, 1)
+    D = hinge.max_diameter(ds, 1, 2, 0.0125)
+    D = hinge.max_diameter(ds, 1, 1, 0.0125)
 
 
 def test_log_constants():
     ds = ContiguousDataset(bin_dense)
     log = Log()
-    G = log.max_gradient(ds)
-    D = log.max_diameter(ds, 2, 0.0125)
-    D = log.max_diameter(ds, 1, 0.0125)
+    G = log.max_gradient(ds, 1)
+    D = log.max_diameter(ds, 1, 2, 0.0125)
+    D = log.max_diameter(ds, 1, 1, 0.0125)
 
