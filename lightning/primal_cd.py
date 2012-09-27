@@ -116,6 +116,9 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
 
         # Learning
         if self.penalty == "l1/l2":
+            n_min = np.min(np.sum(Y == 1, axis=0))
+            tol = self.tol * max(n_min, 1) / n_samples
+
             vinit = self.violation_init_.get(0, 0) * self.C / self.C_init
             viol = _primal_cd(self, self.coef_, self.errors_,
                               ds, y, Y, -1, self.multiclass,
@@ -123,7 +126,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                               self.selection, self.search_size,
                               self.termination, self.n_components,
                               self.C, self.max_iter, self.shrinking, vinit,
-                              rs, self.tol, self.callback, self.n_calls,
+                              rs, tol, self.callback, self.n_calls,
                               self.verbose)
             if self.warm_start and len(self.violation_init_) == 0:
                 self.violation_init_[0] = viol
