@@ -515,7 +515,7 @@ cdef class SquaredHinge(LossFunction):
                           double *Lpp,
                           double *L):
         cdef int i, ii
-        cdef double val
+        cdef double val, tmp
 
         Lp[0] = 0
         Lpp[0] = 0
@@ -524,16 +524,15 @@ cdef class SquaredHinge(LossFunction):
         for ii in xrange(n_nz):
             i = indices[ii]
             val = data[ii] * y[i]
-            col[i] = val
 
             if b[i] > 0:
-                Lp[0] -= b[i] * val
-                Lpp[0] += val * val
-                L[0] += b[i] * b[i]
+                tmp = val * C
+                Lp[0] -= b[i] * tmp
+                Lpp[0] += val * tmp
+                L[0] += C * b[i] * b[i]
 
-        Lp[0] *= 2 * C
-        Lpp[0] *= 2 * C
-        L[0] *= C
+        Lp[0] *= 2
+        Lpp[0] *= 2
 
     cdef void update(self,
                      int j,
@@ -553,7 +552,7 @@ cdef class SquaredHinge(LossFunction):
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            b_new = b[i] + z_diff * col[i]
+            b_new = b[i] + z_diff * data[ii] * y[i]
             b[i] = b_new
             if b_new > 0:
                 L_new[0] += b_new * b_new
