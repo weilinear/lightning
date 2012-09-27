@@ -443,6 +443,7 @@ cdef class Squared(LossFunction):
                           double *Lpp,
                           double *L):
         cdef int ii, i
+        cdef double tmp
 
         Lp[0] = 0
         Lpp[0] = 0
@@ -450,13 +451,13 @@ cdef class Squared(LossFunction):
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            Lpp[0] += data[ii] * data[ii]
-            Lp[0] += b[i] * data[ii]
-            L[0] += b[i] * b[i]
+            tmp = data[ii] * C
+            Lpp[0] += data[ii] * tmp
+            Lp[0] += b[i] * tmp
+            L[0] += C * b[i] * b[i]
 
-        Lpp[0] = 2 * C * Lpp[0]
-        Lp[0] = 2 * C * Lp[0]
-        L[0] *= C
+        Lpp[0] *= 2
+        Lp[0] *= 2
 
     cdef void update(self,
                      int j,
@@ -475,9 +476,7 @@ cdef class Squared(LossFunction):
         for ii in xrange(n_nz):
             i = indices[ii]
             b[i] -= z_diff * data[ii]
-            L_new[0] += b[i] * b[i]
-
-        L_new[0] *= C
+            L_new[0] += C * b[i] * b[i]
 
 
 cdef class SquaredHinge(LossFunction):
@@ -566,7 +565,7 @@ cdef class SquaredHinge(LossFunction):
                              double* Lpp_max):
 
         cdef int ii, i, k
-        cdef double tmp
+        cdef double tmp, tmp2
 
         # Compute objective value, gradient and largest second derivative.
         Lpp_max[0] = 0
@@ -585,21 +584,21 @@ cdef class SquaredHinge(LossFunction):
                     continue
 
                 if b[k, i] > 0:
-                    L[0] += b[k, i] * b[k, i]
-                    tmp = b[k, i] * data[ii]
-                    g[y[i]] -= tmp
-                    g[k] += tmp
-                    tmp = data[ii] * data[ii]
-                    Z[y[i]] += tmp
-                    Z[k] += tmp
+                    L[0] += C * b[k, i] * b[k, i]
+                    tmp = C * data[ii]
+                    tmp2 = tmp * b[k, i]
+                    g[y[i]] -= tmp2
+                    g[k] += tmp2
+                    tmp2 = tmp * data[ii]
+                    Z[y[i]] += tmp2
+                    Z[k] += tmp2
 
         Lpp_max[0] = -DBL_MAX
         for k in xrange(n_vectors):
-            g[k] *= 2 * C
+            g[k] *= 2
             Lpp_max[0] = max(Lpp_max[0], Z[k])
 
-        L[0] *= C
-        Lpp_max[0] *= 2 * C
+        Lpp_max[0] *= 2
         Lpp_max[0] = min(max(Lpp_max[0], LOWER), UPPER)
 
     cdef void update_mc(self,
@@ -631,9 +630,7 @@ cdef class SquaredHinge(LossFunction):
                 b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * data[ii]
                 b[k, i] = b_new
                 if b_new > 0:
-                    L_new[0] += b_new * b_new
-
-        L_new[0] *= C
+                    L_new[0] += C * b_new * b_new
 
 
 cdef class ModifiedHuber(LossFunction):
@@ -660,7 +657,7 @@ cdef class ModifiedHuber(LossFunction):
                           double *Lpp,
                           double *L):
         cdef int i, ii
-        cdef double val
+        cdef double val, tmp
 
         Lp[0] = 0
         Lpp[0] = 0
@@ -671,17 +668,17 @@ cdef class ModifiedHuber(LossFunction):
             val = data[ii] * y[i]
 
             if b[i] > 2:
-                Lp[0] -= 2 * val
+                Lp[0] -= 2 * val * C
                 # -4 yp = 4 (b[i] - 1)
-                L[0] += 4 * (b[i] - 1)
+                L[0] += 4 * C * (b[i] - 1)
             elif b[i] > 0:
-                Lp[0] -= b[i] * val
-                Lpp[0] += val * val
-                L[0] += b[i] * b[i]
+                tmp = val * C
+                Lp[0] -= b[i] * tmp
+                Lpp[0] += val * tmp
+                L[0] += C * b[i] * b[i]
 
-        Lp[0] = 2 * C * Lp[0]
-        Lpp[0] = 2 * C * Lpp[0]
-        L[0] *= C
+        Lp[0] *= 2
+        Lpp[0] *= 2
 
     cdef void update(self,
                      int j,
@@ -704,11 +701,9 @@ cdef class ModifiedHuber(LossFunction):
             b[i] = b_new
 
             if b_new > 2:
-                L_new[0] += 4 * (b[i] - 1)
+                L_new[0] += 4 * C * (b[i] - 1)
             elif b_new > 0:
-                L_new[0] += b_new * b_new
-
-        L_new[0] *= C
+                L_new[0] += C * b_new * b_new
 
 
 cdef class Log(LossFunction):
@@ -737,7 +732,7 @@ cdef class Log(LossFunction):
                           double *Lpp,
                           double *L):
         cdef int i, ii
-        cdef double val, tau, exppred
+        cdef double val, tau, exppred, tmp
 
         Lp[0] = 0
         Lpp[0] = 0
@@ -749,13 +744,10 @@ cdef class Log(LossFunction):
 
             exppred = 1 + 1 / b[i]
             tau = 1 / exppred
-            Lp[0] += val * (tau - 1)
-            Lpp[0] += val * val * tau * (1 - tau)
-            L[0] += log(exppred)
-
-        Lp[0] = C * Lp[0]
-        Lpp[0] = C * Lpp[0]
-        L[0] *= C
+            tmp = val * C
+            Lp[0] += tmp * (tau - 1)
+            Lpp[0] += tmp * val * tau * (1 - tau)
+            L[0] += C * log(exppred)
 
 
     cdef void update(self,
@@ -777,10 +769,7 @@ cdef class Log(LossFunction):
             i = indices[ii]
             b[i] /= exp(z_diff * data[ii] * y[i])
             exppred = 1 + 1 / b[i]
-            L_new[0] += log(exppred)
-
-        L_new[0] *= C
-
+            L_new[0] += C * log(exppred)
 
     # Multiclass
 
@@ -799,7 +788,7 @@ cdef class Log(LossFunction):
                              double* Lpp_max):
 
         cdef int ii, i, k
-        cdef double Lpp, tmp
+        cdef double Lpp, tmp, tmp2
 
         # Compute normalization and objective value.
         L[0] = 0
@@ -808,8 +797,7 @@ cdef class Log(LossFunction):
             Z[i] = 0
             for k in xrange(n_vectors):
                 Z[i] += b[k, i]
-            L[0] += log(Z[i])
-        L[0] *= C
+            L[0] += C * log(Z[i])
 
         # Compute gradient and largest second derivative.
         Lpp_max[0] = -DBL_MAX
@@ -825,15 +813,14 @@ cdef class Log(LossFunction):
                     continue
 
                 tmp = b[k, i] / Z[i]
-                Lpp += data[ii] * data[ii] * tmp * (1 - tmp)
+                tmp2 = data[ii] * C
+                Lpp += tmp2 * data[ii] * tmp * (1 - tmp)
 
                 if k == y[i]:
                     tmp -= 1
 
-                g[k] += tmp * data[ii]
+                g[k] += tmp * tmp2
 
-            g[k] *= C
-            Lpp *= C
             Lpp_max[0] = max(Lpp, Lpp_max[0])
 
         Lpp_max[0] = min(max(Lpp_max[0], LOWER), UPPER)
@@ -864,9 +851,7 @@ cdef class Log(LossFunction):
                     b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
                 Z[i] += b[k, i]
 
-            L_new[0] += log(Z[i])
-
-        L_new[0] *= C
+            L_new[0] += C * log(Z[i])
 
 
 def _primal_cd(self,
