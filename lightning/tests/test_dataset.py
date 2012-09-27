@@ -16,10 +16,14 @@ from lightning.dataset_fast import CSRDataset
 from lightning.dataset_fast import CSCDataset
 from lightning.dataset_fast import KernelDataset
 
+# Create test datasets.
 X, _ = make_classification(n_samples=20, n_features=100,
                            n_informative=5, n_classes=2, random_state=0)
 X2, _ = make_classification(n_samples=10, n_features=100,
                             n_informative=5, n_classes=2, random_state=0)
+
+# Sparsify datasets.
+X[X < 0.3] = 0
 
 capacity = 4 * 20 * 8 # 4 columns of 20 doubles
 
