@@ -313,14 +313,11 @@ cdef class LossFunction:
         else:
             violation[0] = fabs(g_norm - alpha)
 
-        # Compute vector to be projected.
+        # Compute vector to be projected and scaling factor.
+        scaling = 0
         for k in xrange(n_vectors):
             d_old[k] = 0
             d[k] = w[k, j] - g[k] / Lpp_max
-
-        # Project.
-        scaling = 0
-        for k in xrange(n_vectors):
             scaling += d[k] * d[k]
 
         scaling = 1 - alpha / (Lpp_max * sqrt(scaling))
@@ -328,6 +325,7 @@ cdef class LossFunction:
         if scaling < 0:
             scaling = 0
 
+        # Project.
         delta = 0
         dmax = -DBL_MAX
         for k in xrange(n_vectors):
