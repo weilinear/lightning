@@ -189,7 +189,7 @@ cdef class LossFunction:
             return 0
 
         wj_abs = fabs(w[j])
-        delta = fabs(w[j] + d) - wj_abs + Lp * d
+        delta = alpha * (fabs(w[j] + d) - wj_abs) + Lp * d
         z_old = 0
         z = d
 
@@ -374,7 +374,7 @@ cdef class LossFunction:
             # R_new = R - R_j + R_j_new
 
             if step == 1:
-                delta += R_j_new - R_j
+                delta += alpha * (R_j_new - R_j)
                 delta *= self.sigma
 
             # Check decrease condition
