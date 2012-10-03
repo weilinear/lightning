@@ -126,6 +126,7 @@ cdef class LossFunction:
     cdef int solve_l1(self,
                       int j,
                       double C,
+                      double alpha,
                       double *w,
                       int n_samples,
                       int *indices,
@@ -153,8 +154,8 @@ cdef class LossFunction:
 
         Lpp = max(Lpp, 1e-12)
 
-        Lp_p = Lp + 1
-        Lp_n = Lp - 1
+        Lp_p = Lp + alpha
+        Lp_n = Lp - alpha
         violation[0] = 0
 
         # Violation and shrinking.
@@ -198,7 +199,7 @@ cdef class LossFunction:
         while True:
             # Reversed because of the minus in b[i] = 1 - y_i w^T x_i.
             z_diff = z_old - z
-            cond = fabs(w[j] + z) - wj_abs - self.sigma * delta
+            cond = alpha * (fabs(w[j] + z) - wj_abs) - self.sigma * delta
 
             # Compute objective function value.
             self.update(j, z_diff, C, indices, data, n_nz, y, b, &Lj_z)
@@ -956,7 +957,7 @@ def _primal_cd(self,
 
             # Solve sub-problem.
             if penalty == 1:
-                shrink = loss.solve_l1(j, C, w_ptr, n_samples,
+                shrink = loss.solve_l1(j, C, alpha, w_ptr, n_samples,
                                        indices, data, n_nz,
                                        y_ptr, b_ptr, violation_old,
                                        &violation, &n_sv, shrinking)
