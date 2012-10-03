@@ -238,6 +238,7 @@ cdef class LossFunction:
     cdef int solve_l1l2(self,
                         int j,
                         double C,
+                        double alpha,
                         np.ndarray[double, ndim=2, mode='c'] w,
                         int n_vectors,
                         int* indices,
@@ -263,7 +264,6 @@ cdef class LossFunction:
         cdef double* y_ptr
         cdef double* b_ptr
         cdef double z_diff, g_norm
-        cdef double lmbda = 1.0
         cdef int nv = n_samples * n_vectors
 
         # Compute partial gradient.
@@ -301,7 +301,7 @@ cdef class LossFunction:
 
         # Violation and shrinking.
         if R_j == 0:
-            g_norm -= lmbda
+            g_norm -= alpha
             if g_norm > 0:
                 violation[0] = g_norm
             elif shrinking and \
@@ -311,7 +311,7 @@ cdef class LossFunction:
                     print "Shrink variable", j
                 return 1
         else:
-            violation[0] = fabs(g_norm - lmbda)
+            violation[0] = fabs(g_norm - alpha)
 
         # Compute vector to be projected.
         for k in xrange(n_vectors):
@@ -323,7 +323,7 @@ cdef class LossFunction:
         for k in xrange(n_vectors):
             scaling += d[k] * d[k]
 
-        scaling = 1 - lmbda / (Lpp_max * sqrt(scaling))
+        scaling = 1 - alpha / (Lpp_max * sqrt(scaling))
 
         if scaling < 0:
             scaling = 0
@@ -380,7 +380,7 @@ cdef class LossFunction:
                 delta *= self.sigma
 
             # Check decrease condition
-            if L_new - L + R_j_new - R_j <= delta:
+            if L_new - L + alpha * (R_j_new - R_j) <= delta:
                 break
 
             delta *= self.beta
@@ -962,7 +962,7 @@ def _primal_cd(self,
                                        y_ptr, b_ptr, violation_old,
                                        &violation, &n_sv, shrinking)
             elif penalty == 12:
-                shrink = loss.solve_l1l2(j, C, w, n_vectors,
+                shrink = loss.solve_l1l2(j, C, alpha, w, n_vectors,
                                          indices, data, n_nz,
                                          <int*>y.data, Y, multiclass,
                                          b, <double*>g.data, <double*>d.data,
