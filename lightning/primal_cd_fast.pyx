@@ -41,6 +41,7 @@ cdef class LossFunction:
     cdef void solve_l2(self,
                        int j,
                        double C,
+                       double alpha,
                        double *w,
                        int *indices,
                        double *data,
@@ -57,8 +58,8 @@ cdef class LossFunction:
         self.derivatives(j, C, indices, data, n_nz, y, b,
                          Dp, &Dpp, &Dj_zero)
 
-        Dp[0] = w[j] + Dp[0]
-        Dpp = 1 + Dpp
+        Dp[0] = alpha * w[j] + Dp[0]
+        Dpp = alpha + Dpp
 
         if fabs(Dp[0]/Dpp) <= 1e-12:
             return
@@ -82,9 +83,9 @@ cdef class LossFunction:
                     print "Max steps reached during line search..."
                 break
 
-            #   0.5 * (w + z e_j)^T (w + z e_j)
-            # = 0.5 * w^T w + w_j z + 0.5 z^2
-            cond = w[j] * z + (0.5 + self.sigma) * z * z
+            #   0.5 * alpha * (w + z e_j)^T (w + z e_j)
+            # = 0.5 * alpha * w^T w + alpha * w_j z + 0.5 * alpha * z^2
+            cond = alpha * w[j] * z + (0.5 * alpha + self.sigma) * z * z
             cond += Dj_z - Dj_zero
             if cond <= 0:
                 break
@@ -870,6 +871,7 @@ def _primal_cd(self,
                termination,
                int n_components,
                double C,
+               double alpha,
                int max_iter,
                int shrinking,
                double Gnorm_init,
@@ -966,7 +968,7 @@ def _primal_cd(self,
                                          <double*>d_old.data, <double*>buf.data,
                                          violation_old, &violation, shrinking)
             elif penalty == 2:
-                loss.solve_l2(j, C, w_ptr, indices, data, n_nz,
+                loss.solve_l2(j, C, alpha, w_ptr, indices, data, n_nz,
                               y_ptr, b_ptr, &Dp)
                 Dpmax = max(Dpmax, fabs(Dp))
                 if w_ptr[j] != 0:

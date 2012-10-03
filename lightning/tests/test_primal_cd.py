@@ -277,27 +277,29 @@ def test_debiasing():
     assert_array_almost_equal(pred, pred2)
 
 def test_debiasing_warm_start():
-    clf = CDClassifier(kernel="rbf", gamma=0.1, penalty="l1", max_iter=10)
+    clf = CDClassifier(kernel="rbf", gamma=0.1, penalty="l1", max_iter=10,
+                       random_state=0)
     clf.C = 0.5
     clf.fit(bin_dense, bin_target)
     assert_equal(clf.n_nonzero(), 160)
     assert_almost_equal(clf.score(bin_dense, bin_target), 0.845)
 
-    clf = CDClassifier(kernel="rbf", gamma=0.1, penalty="l1", max_iter=10)
+    clf = CDClassifier(kernel="rbf", gamma=0.1, penalty="l1", max_iter=10,
+                       random_state=0)
     clf.C = 0.500001
     clf.fit(bin_dense, bin_target)
     assert_equal(clf.n_nonzero(), 191)
     assert_almost_equal(clf.score(bin_dense, bin_target), 0.97)
 
     clf = CDClassifier(kernel="rbf", gamma=0.1, penalty="l1", max_iter=10,
-                       warm_start=True)
+                       warm_start=True, random_state=0)
     clf.C = 0.5
     clf.fit(bin_dense, bin_target)
     assert_equal(clf.n_nonzero(), 160)
     assert_almost_equal(clf.score(bin_dense, bin_target), 0.845)
 
     clf = CDClassifier(kernel="rbf", gamma=0.1, penalty="l1", max_iter=10,
-                       warm_start=True)
+                       warm_start=True, random_state=0)
     clf.C = 0.500001
     clf.fit(bin_dense, bin_target)
     assert_equal(clf.n_nonzero(), 191)

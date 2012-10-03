@@ -38,7 +38,8 @@ class BaseCD(object):
 
 class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
 
-    def __init__(self, C=1.0, loss="squared_hinge", penalty="l2",
+    def __init__(self, C=1.0, alpha=1.0,
+                 loss="squared_hinge", penalty="l2",
                  multiclass=False,
                  max_iter=50, tol=1e-3, termination="convergence",
                  shrinking=True,
@@ -51,6 +52,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                  callback=None, n_calls=100,
                  random_state=None, verbose=0, n_jobs=1):
         self.C = C
+        self.alpha = alpha
         self.loss = loss
         self.penalty = penalty
         self.multiclass = multiclass
@@ -125,7 +127,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                               indices, 12, self._get_loss(),
                               self.selection, self.search_size,
                               self.termination, self.n_components,
-                              self.C, self.max_iter, self.shrinking, vinit,
+                              self.C, self.alpha,
+                              self.max_iter, self.shrinking, vinit,
                               rs, tol, self.callback, self.n_calls,
                               self.verbose)
             if self.warm_start and len(self.violation_init_) == 0:
@@ -144,7 +147,8 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                                   indices, penalty, self._get_loss(),
                                   self.selection, self.search_size,
                                   self.termination, self.n_components,
-                                  self.C, self.max_iter, self.shrinking, vinit,
+                                  self.C, self.alpha,
+                                  self.max_iter, self.shrinking, vinit,
                                   rs, tol, self.callback, self.n_calls,
                                   self.verbose)
 
@@ -165,7 +169,7 @@ class CDClassifier(BaseCD, BaseClassifier, ClassifierMixin):
                            indices, 2, self._get_loss(),
                            "permute", self.search_size,
                            "convergence", self.n_components,
-                           self.Cd, self.max_iter, self.shrinking, 0,
+                           self.Cd, 1.0, self.max_iter, self.shrinking, 0,
                            rs, self.tol, self.callback, self.n_calls,
                            self.verbose)
 
