@@ -32,7 +32,7 @@ from .sgd_fast import MulticlassSquaredHinge
 class SGDClassifier(BaseClassifier, ClassifierMixin):
 
     def __init__(self, loss="hinge", penalty="l2",
-                 multiclass="one-vs-rest", lmbda=0.01,
+                 multiclass="one-vs-rest", alpha=0.01,
                  kernel="linear", gamma=0.1, coef0=1, degree=4,
                  learning_rate="pegasos", eta0=0.03, power_t=0.5,
                  epsilon=0.01, fit_intercept=True, intercept_decay=1.0,
@@ -41,7 +41,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         self.loss = loss
         self.penalty = penalty
         self.multiclass = multiclass
-        self.lmbda = lmbda
+        self.alpha = alpha
         self.kernel = kernel
         self.gamma = gamma
         self.coef0 = coef0
@@ -114,7 +114,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         eta0 = self.eta0
         if self.learning_rate == "invscaling" and self.power_t == 0.5 and \
            self.eta0 == "auto":
-               D = loss.max_diameter(ds, n_vectors, penalty, self.lmbda)
+               D = loss.max_diameter(ds, n_vectors, penalty, self.alpha)
                G = loss.max_gradient(ds, n_vectors)
                eta0 = D / (4.0 * G)
 
@@ -125,7 +125,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                 _binary_sgd(self,
                             self.coef_, self.intercept_, i,
                             ds, Y[:, i], loss, penalty,
-                            self.n_components, self.lmbda,
+                            self.n_components, self.alpha,
                             self._get_learning_rate(),
                             eta0, self.power_t,
                             self.fit_intercept,
@@ -136,7 +136,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         elif self.multiclass == "natural":
             _multiclass_sgd(self, self.coef_, self.intercept_,
                  ds, y.astype(np.int32), loss, penalty,
-                 self.n_components, self.lmbda, self._get_learning_rate(),
+                 self.n_components, self.alpha, self._get_learning_rate(),
                  eta0, self.power_t, self.fit_intercept, self.intercept_decay,
                  int(self.max_iter * n_samples), rs, self.verbose)
 

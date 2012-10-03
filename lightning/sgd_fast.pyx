@@ -71,12 +71,12 @@ cdef class LossFunction:
 
     cpdef double max_diameter(self, Dataset X,
                               int n_vectors,
-                              int penalty, double lmbda):
+                              int penalty, double alpha):
         cdef double loss = self.max_loss(X.get_n_samples(), n_vectors)
         if penalty == 1:
-            return loss / lmbda
+            return loss / alpha
         elif penalty == 2:
-            return sqrt(loss / lmbda)
+            return sqrt(loss / alpha)
         else:
             raise ValueError("Unknown penalty.")
 
@@ -315,18 +315,18 @@ cdef void _add(np.ndarray[double, ndim=2, mode='c'] W,
         W[k, j] += data[jj] * scale
 
 
-cdef double _get_eta(int learning_rate, double lmbda,
+cdef double _get_eta(int learning_rate, double alpha,
                      double eta0, double power_t, LONG t):
     cdef double eta = eta0
     if learning_rate == 2: # PEGASOS
-        eta = 1.0 / (lmbda * t)
+        eta = 1.0 / (alpha * t)
     elif learning_rate == 3: # INVERSE SCALING
         eta = eta0 / pow(t, power_t)
     return eta
 
 
 cdef void _l1_update(double eta,
-                     double lmbda,
+                     double alpha,
                      double* delta,
                      LONG* timestamps,
                      np.ndarray[double, ndim=2, mode='c'] W,
@@ -355,7 +355,7 @@ cdef void _l1_update(double eta,
 
         timestamps[j] = tm1
 
-    delta[t] = delta[tm1] + eta * lmbda
+    delta[t] = delta[tm1] + eta * alpha
 
 cdef void _l1_finalize(double* delta,
                        LONG* timestamps,
@@ -387,7 +387,7 @@ def _binary_sgd(self,
                 LossFunction loss,
                 int penalty,
                 int n_components,
-                double lmbda,
+                double alpha,
                 int learning_rate,
                 double eta0,
                 double power_t,
@@ -433,7 +433,7 @@ def _binary_sgd(self,
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance.
         i = index[(t-1) % n_samples]
-        eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
+        eta = _get_eta(learning_rate, alpha, eta0, power_t, t)
 
         # Compute current prediction.
         if linear_kernel:
@@ -441,7 +441,7 @@ def _binary_sgd(self,
 
         # L1-regularization.
         if penalty == 1:
-            _l1_update(eta, lmbda,
+            _l1_update(eta, alpha,
                        <double*>delta.data, <LONG*>timestamps.data,
                        W, data, indices, n_nz, k, t)
 
@@ -470,7 +470,7 @@ def _binary_sgd(self,
 
         # L2-regularization.
         if penalty == 2:
-            w_scale *= (1 - lmbda * eta)
+            w_scale *= (1 - alpha * eta)
 
         # Take care of possible underflow.
         if w_scale < 1e-9:
@@ -544,12 +544,12 @@ cdef class MulticlassLossFunction:
 
     cpdef double max_diameter(self, Dataset X,
                               int n_vectors,
-                              int penalty, double lmbda):
+                              int penalty, double alpha):
         cdef double loss = self.max_loss(X.get_n_samples(), n_vectors)
         if penalty == 1 or penalty == 12:
-            return loss / lmbda
+            return loss / alpha
         elif penalty == 2:
-            return sqrt(loss / lmbda)
+            return sqrt(loss / alpha)
         else:
             raise ValueError("Unknown penalty.")
 
@@ -695,7 +695,7 @@ cdef class MulticlassLog(MulticlassLossFunction):
         return n_samples * log(<double>n_vectors)
 
 cdef void _l1l2_update(double eta,
-                       double lmbda,
+                       double alpha,
                        double* delta,
                        LONG* timestamps,
                        np.ndarray[double, ndim=2, mode='c'] W,
@@ -727,7 +727,7 @@ cdef void _l1l2_update(double eta,
 
         timestamps[j] = tm1
 
-    delta[t] = delta[tm1] + eta * lmbda
+    delta[t] = delta[tm1] + eta * alpha
 
 
 cdef void _l1l2_finalize(double* delta,
@@ -764,7 +764,7 @@ def _multiclass_sgd(self,
                     MulticlassLossFunction loss,
                     int penalty,
                     int n_components,
-                    double lmbda,
+                    double alpha,
                     int learning_rate,
                     double eta0,
                     double power_t,
@@ -815,7 +815,7 @@ def _multiclass_sgd(self,
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance.
         i = index[(t-1) % n_samples]
-        eta = _get_eta(learning_rate, lmbda, eta0, power_t, t)
+        eta = _get_eta(learning_rate, alpha, eta0, power_t, t)
 
         # Compute current prediction.
         if linear_kernel:
@@ -823,7 +823,7 @@ def _multiclass_sgd(self,
 
         # L1/L2 regularization.
         if penalty == 12:
-            _l1l2_update(eta, lmbda,
+            _l1l2_update(eta, alpha,
                          <double*>delta.data, <LONG*>timestamps.data,
                          W, data, indices, n_nz, t)
 
@@ -843,7 +843,7 @@ def _multiclass_sgd(self,
 
         # L2 regularization.
         if penalty == 2:
-            scale = (1 - lmbda * eta)
+            scale = (1 - alpha * eta)
             for l in xrange(n_vectors):
                 w_scales[l] *= scale
 
