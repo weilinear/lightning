@@ -565,7 +565,9 @@ cdef class SquaredHinge(LossFunction):
                              double* Lpp_max):
 
         cdef int ii, i, k
-        cdef double tmp, tmp2
+        cdef double tmp, tmp2, b_val
+        cdef int n_samples = b.shape[1]
+        cdef double* b_ptr = <double*>b.data
 
         # Compute objective value, gradient and largest second derivative.
         Lpp_max[0] = 0
@@ -583,15 +585,20 @@ cdef class SquaredHinge(LossFunction):
                 if y[i] == k:
                     continue
 
-                if b[k, i] > 0:
-                    L[0] += C * b[k, i] * b[k, i]
+                # b_val = b[k, i]
+                b_val = b_ptr[i]
+
+                if b_val > 0:
+                    L[0] += C * b_val * b_val
                     tmp = C * data[ii]
-                    tmp2 = tmp * b[k, i]
+                    tmp2 = tmp * b_val
                     g[y[i]] -= tmp2
                     g[k] += tmp2
                     tmp2 = tmp * data[ii]
                     Z[y[i]] += tmp2
                     Z[k] += tmp2
+
+            b_ptr += n_samples
 
         Lpp_max[0] = -DBL_MAX
         for k in xrange(n_vectors):
@@ -616,21 +623,25 @@ cdef class SquaredHinge(LossFunction):
 
         cdef int ii, i, k
         cdef double tmp, b_new
+        cdef int n_samples = b.shape[1]
+        cdef double* b_ptr
 
         L_new[0] = 0
         for ii in xrange(n_nz):
             i = indices[ii]
+            b_ptr = <double*>b.data + i
 
             tmp = d_old[y[i]] - d[y[i]]
 
             for k in xrange(n_vectors):
-                if k == y[i]:
-                    continue
+                if k != y[i]:
+                    # b_ptr[0] = b[k, i]
+                    b_new = b_ptr[0] + (tmp - (d_old[k] - d[k])) * data[ii]
+                    b_ptr[0] = b_new
+                    if b_new > 0:
+                        L_new[0] += C * b_new * b_new
 
-                b_new = b[k, i] + (tmp - (d_old[k] - d[k])) * data[ii]
-                b[k, i] = b_new
-                if b_new > 0:
-                    L_new[0] += C * b_new * b_new
+                b_ptr += n_samples
 
 
 cdef class ModifiedHuber(LossFunction):
