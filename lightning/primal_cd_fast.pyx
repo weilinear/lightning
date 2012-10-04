@@ -261,20 +261,18 @@ cdef class LossFunction:
         cdef double scaling, delta, L, R_j, Lpp_max, dmax
         cdef double tmp, L_new, R_j_new
         cdef double L_tmp, Lpp_tmp
-        cdef double* y_ptr
-        cdef double* b_ptr
+        cdef double* y_ptr = <double*>Y.data
+        cdef double* b_ptr = <double*>b.data
         cdef double z_diff, g_norm
         cdef int nv = n_samples * n_vectors
 
         # Compute partial gradient.
         if multiclass:
-            self.derivatives_mc(j, C, n_vectors, indices, data, n_nz,
-                                y, b, g, Z, &L, &Lpp_max)
+            self.derivatives_mc(j, C, n_samples, n_vectors, indices, data, n_nz,
+                                y, b_ptr, g, Z, &L, &Lpp_max)
         else:
             L = 0
             Lpp_max = -DBL_MAX
-            y_ptr = <double*>Y.data
-            b_ptr = <double*>b.data
             Z_ptr = Z
 
             for k in xrange(n_vectors):
@@ -344,8 +342,8 @@ cdef class LossFunction:
 
             # Update predictions, normalizations and objective value.
             if multiclass:
-                self.update_mc(C, n_vectors, indices, data, n_nz,
-                               y, b, d, d_old, Z, &L_new)
+                self.update_mc(C, n_samples, n_vectors, indices, data, n_nz,
+                               y, b_ptr, d, d_old, Z, &L_new)
             else:
                 L_new = 0
                 y_ptr = <double*>Y.data
@@ -396,12 +394,13 @@ cdef class LossFunction:
     cdef void derivatives_mc(self,
                              int j,
                              double C,
+                             int n_samples,
                              int n_vectors,
                              int* indices,
                              double *data,
                              int n_nz,
                              int* y,
-                             np.ndarray[double, ndim=2, mode='c'] b,
+                             double* b,
                              double* g,
                              double* Z,
                              double* L,
@@ -410,12 +409,13 @@ cdef class LossFunction:
 
     cdef void update_mc(self,
                         double C,
+                        int n_samples,
                         int n_vectors,
                         int* indices,
                         double *data,
                         int n_nz,
                         int* y,
-                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double *b,
                         double *d,
                         double *d_old,
                         double* Z,
@@ -553,12 +553,13 @@ cdef class SquaredHinge(LossFunction):
     cdef void derivatives_mc(self,
                              int j,
                              double C,
+                             int n_samples,
                              int n_vectors,
                              int* indices,
                              double *data,
                              int n_nz,
                              int* y,
-                             np.ndarray[double, ndim=2, mode='c'] b,
+                             double* b,
                              double* g,
                              double* Z,
                              double* L,
@@ -566,8 +567,7 @@ cdef class SquaredHinge(LossFunction):
 
         cdef int ii, i, k
         cdef double tmp, tmp2, b_val
-        cdef int n_samples = b.shape[1]
-        cdef double* b_ptr = <double*>b.data
+        cdef double* b_ptr = b
 
         # Compute objective value, gradient and largest second derivative.
         Lpp_max[0] = 0
@@ -610,12 +610,13 @@ cdef class SquaredHinge(LossFunction):
 
     cdef void update_mc(self,
                         double C,
+                        int n_samples,
                         int n_vectors,
                         int* indices,
                         double *data,
                         int n_nz,
                         int* y,
-                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double *b,
                         double *d,
                         double *d_old,
                         double* Z,
@@ -623,13 +624,12 @@ cdef class SquaredHinge(LossFunction):
 
         cdef int ii, i, k
         cdef double tmp, b_new
-        cdef int n_samples = b.shape[1]
         cdef double* b_ptr
 
         L_new[0] = 0
         for ii in xrange(n_nz):
             i = indices[ii]
-            b_ptr = <double*>b.data + i
+            b_ptr = b + i
 
             tmp = d_old[y[i]] - d[y[i]]
 
@@ -787,12 +787,13 @@ cdef class Log(LossFunction):
     cdef void derivatives_mc(self,
                              int j,
                              double C,
+                             int n_samples,
                              int n_vectors,
                              int* indices,
                              double *data,
                              int n_nz,
                              int* y,
-                             np.ndarray[double, ndim=2, mode='c'] b,
+                             double* b,
                              double *g,
                              double* Z,
                              double* L,
@@ -800,19 +801,24 @@ cdef class Log(LossFunction):
 
         cdef int ii, i, k
         cdef double Lpp, tmp, tmp2
+        cdef double* b_ptr
 
         # Compute normalization and objective value.
         L[0] = 0
         for ii in xrange(n_nz):
             i = indices[ii]
+            b_ptr = b + i
             Z[i] = 0
             for k in xrange(n_vectors):
-                Z[i] += b[k, i]
+                # b_ptr[0] = b[k, i]
+                Z[i] += b_ptr[0]
+                b_ptr += n_samples
             L[0] += C * log(Z[i])
 
         # Compute gradient and largest second derivative.
         Lpp_max[0] = -DBL_MAX
 
+        b_ptr = b
         for k in xrange(n_vectors):
             g[k] = 0
             Lpp = 0
@@ -823,7 +829,8 @@ cdef class Log(LossFunction):
                 if Z[i] == 0:
                     continue
 
-                tmp = b[k, i] / Z[i]
+                # b_ptr[i] = b[k, i]
+                tmp = b_ptr[i] / Z[i]
                 tmp2 = data[ii] * C
                 Lpp += tmp2 * data[ii] * tmp * (1 - tmp)
 
@@ -833,34 +840,40 @@ cdef class Log(LossFunction):
                 g[k] += tmp * tmp2
 
             Lpp_max[0] = max(Lpp, Lpp_max[0])
+            b_ptr += n_samples
 
         Lpp_max[0] = min(max(Lpp_max[0], LOWER), UPPER)
 
     cdef void update_mc(self,
                         double C,
+                        int n_samples,
                         int n_vectors,
                         int* indices,
                         double *data,
                         int n_nz,
                         int* y,
-                        np.ndarray[double, ndim=2, mode='c'] b,
+                        double* b,
                         double* d,
                         double* d_old,
                         double* Z,
                         double* L_new):
         cdef int i, ii, k
         cdef double tmp
+        cdef double* b_ptr
 
         L_new[0] = 0
         for ii in xrange(n_nz):
             i = indices[ii]
+            b_ptr = b + i
             tmp = d_old[y[i]] - d[y[i]]
             Z[i] = 0
 
             for k in xrange(n_vectors):
+                # b_ptr[0] = b[k, i]
                 if y[i] != k:
-                    b[k, i] *= exp((d[k] - d_old[k] + tmp) * data[ii])
-                Z[i] += b[k, i]
+                    b_ptr[0] *= exp((d[k] - d_old[k] + tmp) * data[ii])
+                Z[i] += b_ptr[0]
+                b_ptr += n_samples
 
             L_new[0] += C * log(Z[i])
 
