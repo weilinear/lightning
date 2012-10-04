@@ -395,6 +395,8 @@ def _binary_sgd(self,
                 double intercept_decay,
                 int max_iter,
                 random_state,
+                callback,
+                int n_calls,
                 int verbose):
 
     cdef Py_ssize_t n_samples = X.get_n_samples()
@@ -406,6 +408,7 @@ def _binary_sgd(self,
     cdef double update, update_eta, update_eta_scaled, pred, eta, scale
     cdef double w_scale = 1.0
     cdef double intercept = 0.0
+    cdef int has_callback = callback is not None
 
     cdef np.ndarray[LONG, ndim=1, mode='c'] timestamps
     timestamps = np.zeros(n_features, dtype=np.int64)
@@ -483,6 +486,12 @@ def _binary_sgd(self,
                 kds.remove_sv(i)
             else:
                 kds.add_sv(i)
+
+        # Callback
+        if has_callback and t % n_calls == 0:
+            ret = callback(self)
+            if ret is not None:
+                break
 
         # Stop if necessary.
         if n_components > 0 and kds.n_sv() >= n_components:
@@ -772,6 +781,8 @@ def _multiclass_sgd(self,
                     double intercept_decay,
                     int max_iter,
                     random_state,
+                    callback,
+                    int n_calls,
                     int verbose):
 
     cdef Py_ssize_t n_samples = X.get_n_samples()
@@ -788,6 +799,7 @@ def _multiclass_sgd(self,
     cdef np.ndarray[double, ndim=1, mode='c'] scores
     scores = np.ones(n_vectors, dtype=np.float64)
     cdef int all_zero
+    cdef int has_callback = callback is not None
 
     cdef np.ndarray[LONG, ndim=1, mode='c'] timestamps
     timestamps = np.zeros(n_features, dtype=np.int64)
@@ -863,6 +875,12 @@ def _multiclass_sgd(self,
                 kds.remove_sv(i)
             else:
                 kds.add_sv(i)
+
+        # Callback
+        if has_callback and t % n_calls == 0:
+            ret = callback(self)
+            if ret is not None:
+                break
 
         # Stop if necessary.
         if n_components > 0 and kds.n_sv() >= n_components:

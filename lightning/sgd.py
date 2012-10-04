@@ -32,11 +32,12 @@ from .sgd_fast import MulticlassSquaredHinge
 class SGDClassifier(BaseClassifier, ClassifierMixin):
 
     def __init__(self, loss="hinge", penalty="l2",
-                 multiclass="one-vs-rest", alpha=0.01,
+                 multiclass=False, alpha=0.01,
                  kernel="linear", gamma=0.1, coef0=1, degree=4,
                  learning_rate="pegasos", eta0=0.03, power_t=0.5,
                  epsilon=0.01, fit_intercept=True, intercept_decay=1.0,
                  n_components=0, max_iter=10, random_state=None,
+                 callback=None, n_calls=100,
                  cache_mb=500, verbose=0, n_jobs=1):
         self.loss = loss
         self.penalty = penalty
@@ -55,6 +56,8 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         self.n_components = n_components
         self.max_iter = max_iter
         self.random_state = random_state
+        self.callback = callback
+        self.n_calls = n_calls
         self.cache_mb = cache_mb
         self.verbose = verbose
         self.n_jobs = n_jobs
@@ -62,7 +65,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
         self.support_vectors_ = None
 
     def _get_loss(self):
-        if self.multiclass == "natural":
+        if self.multiclass == True:
             losses = {
                 "log" : MulticlassLog(),
                 "hinge" : MulticlassHinge(),
@@ -97,7 +100,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
     def fit(self, X, y):
         rs = check_random_state(self.random_state)
 
-        reencode = self.multiclass == "natural"
+        reencode = self.multiclass == True
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode)
 
         kernel = False if self.kernel == "linear" else True
@@ -118,7 +121,7 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                G = loss.max_gradient(ds, n_vectors)
                eta0 = D / (4.0 * G)
 
-        if n_vectors == 1 or self.multiclass == "one-vs-rest":
+        if n_vectors == 1 or self.multiclass == False:
             Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
                                   dtype=np.float64)
             for i in xrange(n_vectors):
@@ -130,15 +133,16 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                             eta0, self.power_t,
                             self.fit_intercept,
                             self.intercept_decay,
-                            int(self.max_iter * n_samples),
-                            rs, self.verbose)
+                            int(self.max_iter * n_samples), rs,
+                            self.callback, self.n_calls, self.verbose)
 
-        elif self.multiclass == "natural":
+        elif self.multiclass == True:
             _multiclass_sgd(self, self.coef_, self.intercept_,
                  ds, y.astype(np.int32), loss, penalty,
                  self.n_components, self.alpha, self._get_learning_rate(),
                  eta0, self.power_t, self.fit_intercept, self.intercept_decay,
-                 int(self.max_iter * n_samples), rs, self.verbose)
+                 int(self.max_iter * n_samples), rs,
+                 self.callback, self.n_calls, self.verbose)
 
         else:
             raise ValueError("Wrong value for multiclass.")

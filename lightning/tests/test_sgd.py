@@ -85,7 +85,7 @@ def test_multiclass_sgd():
 def test_multiclass_hinge_sgd():
     for data in (mult_dense, mult_csr):
         for fit_intercept in (True, False):
-            clf = SGDClassifier(loss="hinge", multiclass="natural",
+            clf = SGDClassifier(loss="hinge", multiclass=True,
                                 fit_intercept=fit_intercept, random_state=0)
             clf.fit(data, mult_target)
             assert_greater(clf.score(data, mult_target), 0.78)
@@ -94,7 +94,7 @@ def test_multiclass_hinge_sgd():
 def test_multiclass_hinge_sgd_l1l2():
     for data in (mult_dense, mult_csr):
         clf = SGDClassifier(loss="hinge", penalty="l1/l2",
-                            multiclass="natural", random_state=0)
+                            multiclass=True, random_state=0)
         clf.fit(data, mult_target)
         assert_greater(clf.score(data, mult_target), 0.75)
 
@@ -102,7 +102,7 @@ def test_multiclass_hinge_sgd_l1l2():
 def test_multiclass_squared_hinge_sgd():
     for data in (mult_dense, mult_csr):
         for fit_intercept in (True, False):
-            clf = SGDClassifier(loss="squared_hinge", multiclass="natural",
+            clf = SGDClassifier(loss="squared_hinge", multiclass=True,
                                 learning_rate="constant", eta0=1e-3,
                                 fit_intercept=fit_intercept, random_state=0)
             clf.fit(data, mult_target)
@@ -112,7 +112,7 @@ def test_multiclass_squared_hinge_sgd():
 def test_multiclass_hinge_kernel_sgd():
     for fit_intercept in (True, False):
         clf = SGDClassifier(kernel="rbf", gamma=0.1,
-                            loss="hinge", multiclass="natural",
+                            loss="hinge", multiclass=True,
                             fit_intercept=fit_intercept,
                             random_state=0)
         clf.fit(mult_dense, mult_target)
@@ -122,7 +122,7 @@ def test_multiclass_hinge_kernel_sgd():
 def test_multiclass_log_sgd():
     for data in (mult_dense, mult_csr):
         for fit_intercept in (True, False):
-            clf = SGDClassifier(loss="log", multiclass="natural",
+            clf = SGDClassifier(loss="log", multiclass=True,
                                 fit_intercept=fit_intercept,
                                 random_state=0)
             clf.fit(data, mult_target)
@@ -132,7 +132,7 @@ def test_multiclass_log_sgd():
 def test_multiclass_log_kernel_sgd():
     for fit_intercept in (True, False):
         clf = SGDClassifier(kernel="rbf", gamma=0.1,
-                            loss="log", multiclass="natural",
+                            loss="log", multiclass=True,
                             fit_intercept=fit_intercept,
                             random_state=0)
         clf.fit(mult_dense, mult_target)
@@ -157,7 +157,7 @@ def test_n_components_multiclass():
 
 def test_n_components_multiclass_natural():
     for loss in ("hinge", "log"):
-        clf = SGDClassifier(loss=loss, multiclass="natural",
+        clf = SGDClassifier(loss=loss, multiclass=True,
                             kernel="rbf", gamma=0.1, n_components=50,
                             random_state=0)
         clf.fit(mult_dense, mult_target)
