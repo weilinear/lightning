@@ -18,11 +18,12 @@ bin_dense, bin_target = make_classification(n_samples=200, n_features=100,
 mult_dense, mult_target = make_classification(n_samples=300, n_features=100,
                                               n_informative=5,
                                               n_classes=3, random_state=0)
-mult_csc = sp.csc_matrix(mult_dense)
+mult_csr = sp.csr_matrix(mult_dense)
 
 
 def test_sparsa_multiclass():
-    clf = SparsaClassifier(max_iter=500)
-    clf.fit(mult_dense, mult_target)
-    assert_almost_equal(clf.score(mult_dense, mult_target), 0.97)
+    for data in (mult_dense, mult_csr):
+        clf = SparsaClassifier(max_iter=500)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.97)
 
