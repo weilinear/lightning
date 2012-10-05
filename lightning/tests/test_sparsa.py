@@ -22,7 +22,7 @@ mult_csc = sp.csc_matrix(mult_dense)
 
 
 def test_sparsa_multiclass():
-    clf = SparsaClassifier(verbose=0)
+    clf = SparsaClassifier(max_iter=500)
     clf.fit(mult_dense, mult_target)
-    print clf.score(mult_dense, mult_target)
+    assert_almost_equal(clf.score(mult_dense, mult_target), 0.97)
 

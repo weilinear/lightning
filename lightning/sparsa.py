@@ -9,36 +9,7 @@ from sklearn.utils import check_random_state
 from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
-
-class Loss(object):
-    pass
-
-class SquaredHinge(Loss):
-
-    def gradient(self, df, X, y):
-        n_samples, n_features = X.shape
-        n_vectors = df.shape[1]
-        G = np.zeros((n_vectors, n_features), dtype=np.float64)
-        for i in xrange(n_samples):
-            for k in xrange(n_vectors):
-                if y[i] == k:
-                    continue
-                update = max(1 - df[i, y[i]] + df[i, k], 0)
-                if update != 0:
-                    update = update * X[i]
-                    G[y[i]] -= update
-                    G[k] += update
-        G *= 2
-        return G
-
-
-    def objective(self, df, y):
-        n_samples = df.shape[0]
-        ind = np.arange(n_samples)
-        dfy = df[ind, y]
-        obj = np.sum(np.maximum(1 - dfy[:, np.newaxis] + df, 0) ** 2)
-        obj -= n_samples
-        return obj
+from .sparsa_fast import SquaredHinge
 
 
 class Penalty(object):
@@ -95,6 +66,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
 
         loss = self._get_loss()
         penalty = self._get_penalty()
+        ds = self._get_dataset(X, kernel=False)
 
         df = np.zeros((n_samples, n_vectors), dtype=np.float64)
         coef = np.zeros((n_vectors, n_features), dtype=np.float64)
@@ -113,7 +85,8 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
             obj_old = obj
 
             # Gradient
-            G = loss.gradient(df, X, y)
+            G.fill(0.0)
+            loss.gradient(df, ds, y, G)
             G *= self.C
 
             for tt in xrange(self.max_steps):

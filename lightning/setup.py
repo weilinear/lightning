@@ -39,6 +39,11 @@ def configuration(parent_package='', top_path=None):
          include_dirs=[numpy.get_include()]
          )
 
+    config.add_extension('sparsa_fast',
+         sources=['sparsa_fast.cpp'],
+         include_dirs=[numpy.get_include()]
+         )
+
     config.add_subpackage('random')
     config.add_subpackage('tests')
 
