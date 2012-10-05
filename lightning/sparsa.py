@@ -89,22 +89,24 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
             loss.gradient(df, ds, y, G)
             G *= self.C
 
+            # Line search
             for tt in xrange(self.max_steps):
                 # Solve
                 coef = coef_old - G / L
-
                 penalty.projection(coef, self.alpha, L)
 
-                s = coef - coef_old
-                ss = np.sum(s ** 2)
-
+                # New objective value
                 df = safe_sparse_dot(X, coef.T)
                 obj = self.C * loss.objective(df, y)
                 obj += self.alpha * penalty.regularization(coef)
 
+                # Difference with previous iteration
+                s = coef - coef_old
+                ss = np.sum(s ** 2)
                 obj_diff = obj - obj_old
                 accepted = obj_diff <= - 0.5 * self.sigma * L * ss
 
+                # Sufficient decrease condition
                 if accepted:
                     if self.verbose >= 2:
                         print "Accepted at", tt + 1
