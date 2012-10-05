@@ -34,7 +34,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
                  loss="squared_hinge", penalty="l1/l2", max_iter=100,
                  Lmin=1e-30, Lmax=1e30, L_factor=0.8,
                  max_steps=30, eta=2.0, sigma=1e-5,
-                 verbose=0):
+                 callback=None, verbose=0):
         self.C = C
         self.alpha = alpha
         self.loss = loss
@@ -46,6 +46,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
         self.max_steps = max_steps
         self.eta = eta
         self.sigma = 1e-5
+        self.callback = callback
         self.verbose = verbose
 
     def _get_loss(self):
@@ -116,10 +117,14 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
                     L *= self.eta
             # end for line search
 
+            self.coef_ = coef
             L *= self.L_factor
             L = min(self.Lmax, max(self.Lmin, L))
 
-        self.coef_ = coef
+            if self.callback is not None:
+                ret = self.callback(self)
+                if ret is not None:
+                    break
 
         return self
 
