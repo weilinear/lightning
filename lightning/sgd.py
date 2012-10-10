@@ -120,6 +120,8 @@ class SGDClassifier(BaseClassifier, ClassifierMixin):
                D = loss.max_diameter(ds, n_vectors, penalty, self.alpha)
                G = loss.max_gradient(ds, n_vectors)
                eta0 = D / (4.0 * G)
+               if self.verbose >= 1:
+                   print "eta0=%f" % eta0
 
         if n_vectors == 1 or self.multiclass == False:
             Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
