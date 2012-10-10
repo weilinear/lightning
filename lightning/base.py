@@ -74,7 +74,8 @@ class BaseClassifier(BaseEstimator):
             n_nz = np.sum(np.sum(self.coef_ != 0, axis=0, dtype=bool))
 
         if percentage:
-            if self.support_vectors_ is not None:
+            if hasattr(self, "support_vectors_") and \
+               self.support_vectors_ is not None:
                 n_nz /= float(self.n_samples_)
             else:
                 n_nz /= float(self.coef_.shape[1])
