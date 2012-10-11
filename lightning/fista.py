@@ -120,12 +120,12 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
             # Line search
             for tt in xrange(self.max_steps):
                 # Solve
-                coef_tmp = coef - G / L
-                coef_tmp = penalty.projection(coef_tmp, self.alpha, L)
+                coefx = coef - G / L
+                coefx = penalty.projection(coefx, self.alpha, L)
 
-                df_tmp = safe_sparse_dot(X, coef_tmp.T)
-                obj = self._get_objective(df_tmp, y, Y, loss, penalty, coef_tmp)
-                approx = self._get_quad_approx(coef_tmp, coef, G, df, y, Y, L,
+                dfx = safe_sparse_dot(X, coefx.T)
+                obj = self._get_objective(dfx, y, Y, loss, penalty, coefx)
+                approx = self._get_quad_approx(coefx, coef, G, df, y, Y, L,
                                                loss, penalty)
 
                 accepted = obj <= approx
@@ -139,8 +139,10 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
                 else:
                     L *= self.eta
 
-            coefx = coef - G / L
-            coefx = penalty.projection(coefx, self.alpha, L)
+            if self.max_steps == 0:
+                coefx = coef - G / L
+                coefx = penalty.projection(coefx, self.alpha, L)
+
             t = (1 + np.sqrt(1 + 4 * t_old * t_old) / 2)
             coef = coefx + (t_old - 1) / t * (coefx - coefx_old)
             df = safe_sparse_dot(X, coef.T)
