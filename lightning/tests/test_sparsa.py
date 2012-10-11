@@ -21,9 +21,15 @@ mult_dense, mult_target = make_classification(n_samples=300, n_features=100,
 mult_csr = sp.csr_matrix(mult_dense)
 
 
-def test_sparsa_multiclass():
+def test_sparsa_multiclass_l1l2():
     for data in (mult_dense, mult_csr):
-        clf = SparsaClassifier(max_iter=500)
+        clf = SparsaClassifier(max_iter=500, penalty="l1/l2")
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.97)
+
+def test_sparsa_multiclass_l1():
+    for data in (mult_dense, mult_csr):
+        clf = SparsaClassifier(max_iter=500, penalty="l1")
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.96)
 

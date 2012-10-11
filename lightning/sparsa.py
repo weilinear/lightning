@@ -12,17 +12,23 @@ from .base import BaseClassifier
 from .sparsa_fast import SquaredHinge
 
 
-class Penalty(object):
-    pass
+class L1Penalty(object):
+
+    def projection(self, coef, alpha, L):
+        return np.sign(coef) * np.maximum(np.abs(coef) - alpha / L, 0)
+
+    def regularization(self, coef):
+        return np.sum(np.abs(coef))
 
 
-class L1L2(Penalty):
+class L1L2Penalty(object):
 
     def projection(self, coef, alpha, L):
         n_features = coef.shape[1]
         l2norms = np.sqrt(np.sum(coef ** 2, axis=0))
         scales = np.maximum(1.0 - alpha / (L * l2norms), 0)
         coef *= scales
+        return coef
 
     def regularization(self, coef):
         return np.sum(np.sqrt(np.sum(coef ** 2, axis=0)))
@@ -31,7 +37,7 @@ class L1L2(Penalty):
 class SparsaClassifier(BaseClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, alpha=1.0,
-                 loss="squared_hinge", penalty="l1/l2", max_iter=100,
+                 loss="squared_hinge", penalty="l1", max_iter=100,
                  Lmin=1e-30, Lmax=1e30, L_factor=0.8,
                  max_steps=30, eta=2.0, sigma=1e-5,
                  callback=None, verbose=0):
@@ -57,7 +63,8 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
 
     def _get_penalty(self):
         penalties = {
-            "l1/l2" : L1L2(),
+            "l1" : L1Penalty(),
+            "l1/l2" : L1L2Penalty(),
         }
         return penalties[self.penalty]
 
@@ -94,7 +101,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
             for tt in xrange(self.max_steps):
                 # Solve
                 coef = coef_old - G / L
-                penalty.projection(coef, self.alpha, L)
+                coef = penalty.projection(coef, self.alpha, L)
 
                 # New objective value
                 df = safe_sparse_dot(X, coef.T)
