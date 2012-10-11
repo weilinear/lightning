@@ -64,6 +64,18 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
         obj += self.alpha * penalty.regularization(coef)
         return obj
 
+    def _get_quad_approx(self, coefa, coefb, gradb, dfb, y, Y, L,
+                         loss, penalty):
+        if self.multiclass:
+            approx = self.C * loss.objective(dfb, y)
+        else:
+            approx = self.C * loss.objective(dfb, Y)
+        diff = coefa - coefb
+        approx += np.sum(diff * gradb)
+        approx += L / 2 * np.sum(diff ** 2)
+        approx += self.alpha * penalty.regularization(coefa)
+        return approx
+
     def fit(self, X, y):
         n_samples, n_features = X.shape
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode=True)
@@ -80,7 +92,13 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
         G = np.zeros((n_vectors, n_features), dtype=np.float64)
 
         obj = self._get_objective(df, y, Y, loss, penalty, coef)
-        L = loss.max_gradient(ds, n_vectors)
+
+        if self.max_steps == 0:
+            # No line search, need to use constant step size.
+            L = loss.max_gradient(ds, n_vectors)
+        else:
+            # Do not bother to compute the Lipschitz constant (expensive).
+            L = 1.0
 
         t = 1.0
         for it in xrange(self.max_iter):
@@ -99,12 +117,31 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
                 loss.gradient(df, ds, Y, G)
             G *= self.C
 
-            # Solve
+            # Line search
+            for tt in xrange(self.max_steps):
+                # Solve
+                coef_tmp = coef - G / L
+                coef_tmp = penalty.projection(coef_tmp, self.alpha, L)
+
+                df_tmp = safe_sparse_dot(X, coef_tmp.T)
+                obj = self._get_objective(df_tmp, y, Y, loss, penalty, coef_tmp)
+                approx = self._get_quad_approx(coef_tmp, coef, G, df, y, Y, L,
+                                               loss, penalty)
+
+                accepted = obj <= approx
+
+                # Sufficient decrease condition
+                if accepted:
+                    if self.verbose >= 2:
+                        print "Accepted at", tt + 1
+                        print "obj_diff =", obj_diff
+                    break
+                else:
+                    L *= self.eta
+
             coefx = coef - G / L
             coefx = penalty.projection(coefx, self.alpha, L)
-
             t = (1 + np.sqrt(1 + 4 * t_old * t_old) / 2)
-
             coef = coefx + (t_old - 1) / t * (coefx - coefx_old)
             df = safe_sparse_dot(X, coef.T)
 

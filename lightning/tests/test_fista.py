@@ -35,3 +35,19 @@ def test_fista_multiclass_l1():
         assert_greater(clf.score(data, mult_target), 0.95)
 
 
+def test_fista_multiclass_l1l2_without_line_search():
+    for data in (mult_dense, mult_csr):
+        clf = FistaClassifier(max_iter=500, penalty="l1/l2", multiclass=True,
+                              max_steps=0)
+        clf.fit(data, mult_target)
+        assert_greater(clf.score(data, mult_target), 0.96)
+
+
+def test_fista_multiclass_l1_without_line_search():
+    for data in (mult_dense, mult_csr):
+        clf = FistaClassifier(max_iter=500, penalty="l1", multiclass=True,
+                              max_steps=0)
+        clf.fit(data, mult_target)
+        assert_greater(clf.score(data, mult_target), 0.95)
+
+
