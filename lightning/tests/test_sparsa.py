@@ -23,13 +23,28 @@ mult_csr = sp.csr_matrix(mult_dense)
 
 def test_sparsa_multiclass_l1l2():
     for data in (mult_dense, mult_csr):
-        clf = SparsaClassifier(max_iter=500, penalty="l1/l2")
+        clf = SparsaClassifier(max_iter=500, penalty="l1/l2", multiclass=True)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.97)
 
+
 def test_sparsa_multiclass_l1():
     for data in (mult_dense, mult_csr):
-        clf = SparsaClassifier(max_iter=500, penalty="l1")
+        clf = SparsaClassifier(max_iter=500, penalty="l1", multiclass=True)
         clf.fit(data, mult_target)
         assert_almost_equal(clf.score(data, mult_target), 0.96)
+
+
+def test_sparsa_multitask_l1l2():
+    for data in (mult_dense, mult_csr):
+        clf = SparsaClassifier(max_iter=500, penalty="l1/l2", multiclass=False)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.88, 2)
+
+
+def test_sparsa_multitask_l1():
+    for data in (mult_dense, mult_csr):
+        clf = SparsaClassifier(max_iter=500, penalty="l1", multiclass=False)
+        clf.fit(data, mult_target)
+        assert_almost_equal(clf.score(data, mult_target), 0.87, 2)
 

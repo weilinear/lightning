@@ -25,7 +25,57 @@ cdef extern from "math.h":
 cdef extern from "float.h":
    double DBL_MAX
 
+
 cdef class SquaredHinge:
+
+    cpdef gradient(self,
+                   np.ndarray[double, ndim=2, mode='c'] df,
+                   Dataset X,
+                   np.ndarray[double, ndim=2, mode='fortran'] y,
+                   np.ndarray[double, ndim=2, mode='c'] G):
+
+        cdef double* data
+        cdef int* indices
+        cdef int n_nz
+
+        cdef int n_samples = df.shape[0]
+        cdef int n_vectors = df.shape[1]
+        cdef int i, k, j, jj
+        cdef double tmp
+
+        for i in xrange(n_samples):
+            for k in xrange(n_vectors):
+                tmp = 1 - y[i, k] * df[i, k]
+                if tmp > 0:
+                    tmp *= y[i, k]
+                    X.get_row_ptr(i, &indices, &data, &n_nz)
+                    for jj in xrange(n_nz):
+                        j = indices[jj]
+                        G[k, j] -= tmp * data[jj]
+
+        G *= 2
+
+    cpdef objective(self,
+                    np.ndarray[double, ndim=2, mode='c'] df,
+                    np.ndarray[double, ndim=2, mode='fortran'] y):
+
+        cdef int n_samples = df.shape[0]
+        cdef int n_vectors = df.shape[1]
+
+        cdef int i, k
+        cdef double obj, value
+
+        obj = 0
+
+        for i in xrange(n_samples):
+            for k in xrange(n_vectors):
+                value = max(1 - y[i, k] * df[i, k], 0)
+                obj += value * value
+
+        return obj
+
+
+cdef class MulticlassSquaredHinge:
 
     cpdef gradient(self,
                    np.ndarray[double, ndim=2, mode='c'] df,

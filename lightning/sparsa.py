@@ -10,6 +10,7 @@ from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
 from .sparsa_fast import SquaredHinge
+from .sparsa_fast import MulticlassSquaredHinge
 
 
 class L1Penalty(object):
@@ -37,7 +38,8 @@ class L1L2Penalty(object):
 class SparsaClassifier(BaseClassifier, ClassifierMixin):
 
     def __init__(self, C=1.0, alpha=1.0,
-                 loss="squared_hinge", penalty="l1", max_iter=100,
+                 loss="squared_hinge", penalty="l1", multiclass=False,
+                 max_iter=100,
                  Lmin=1e-30, Lmax=1e30, L_factor=0.8,
                  max_steps=30, eta=2.0, sigma=1e-5,
                  callback=None, verbose=0):
@@ -45,6 +47,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
         self.alpha = alpha
         self.loss = loss
         self.penalty = penalty
+        self.multiclass = multiclass
         self.max_iter = max_iter
         self.Lmin = Lmin
         self.Lmax = Lmax
@@ -56,9 +59,14 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
         self.verbose = verbose
 
     def _get_loss(self):
-        losses = {
-            "squared_hinge" : SquaredHinge(),
-        }
+        if self.multiclass:
+            losses = {
+                "squared_hinge" : MulticlassSquaredHinge(),
+            }
+        else:
+            losses = {
+                "squared_hinge" : SquaredHinge(),
+            }
         return losses[self.loss]
 
     def _get_penalty(self):
@@ -68,9 +76,19 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
         }
         return penalties[self.penalty]
 
+    def _get_objective(self, df, y, Y, loss, penalty, coef):
+        if self.multiclass:
+            obj = self.C * loss.objective(df, y)
+        else:
+            obj = self.C * loss.objective(df, Y)
+        obj += self.alpha * penalty.regularization(coef)
+        return obj
+
     def fit(self, X, y):
         n_samples, n_features = X.shape
         y, n_classes, n_vectors = self._set_label_transformers(y, reencode=True)
+        Y = np.asfortranarray(self.label_binarizer_.transform(y),
+                              dtype=np.float64)
 
         loss = self._get_loss()
         penalty = self._get_penalty()
@@ -80,8 +98,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
         coef = np.zeros((n_vectors, n_features), dtype=np.float64)
         G = np.zeros((n_vectors, n_features), dtype=np.float64)
 
-        obj = self.C * loss.objective(df, y)
-        obj += self.alpha * penalty.regularization(coef)
+        obj = self._get_objective(df, y, Y, loss, penalty, coef)
 
         L = 1.0
         for t in xrange(self.max_iter):
@@ -94,7 +111,10 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
 
             # Gradient
             G.fill(0.0)
-            loss.gradient(df, ds, y, G)
+            if self.multiclass:
+                loss.gradient(df, ds, y, G)
+            else:
+                loss.gradient(df, ds, Y, G)
             G *= self.C
 
             # Line search
@@ -105,8 +125,7 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
 
                 # New objective value
                 df = safe_sparse_dot(X, coef.T)
-                obj = self.C * loss.objective(df, y)
-                obj += self.alpha * penalty.regularization(coef)
+                obj = self._get_objective(df, y, Y, loss, penalty, coef)
 
                 # Difference with previous iteration
                 s = coef - coef_old
@@ -124,10 +143,11 @@ class SparsaClassifier(BaseClassifier, ClassifierMixin):
                     L *= self.eta
             # end for line search
 
-            self.coef_ = coef
             L *= self.L_factor
             L = min(self.Lmax, max(self.Lmin, L))
 
+            # Callback might need self.coef_.
+            self.coef_ = coef
             if self.callback is not None:
                 ret = self.callback(self)
                 if ret is not None:
