@@ -20,7 +20,6 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
     def __init__(self, C=1.0, alpha=1.0,
                  loss="squared_hinge", penalty="l1", multiclass=False,
                  max_iter=100,
-                 Lmin=1e-30, Lmax=1e30, L_factor=0.8,
                  max_steps=30, eta=2.0, sigma=1e-5,
                  callback=None, verbose=0):
         self.C = C
@@ -29,9 +28,6 @@ class FistaClassifier(BaseClassifier, ClassifierMixin):
         self.penalty = penalty
         self.multiclass = multiclass
         self.max_iter = max_iter
-        self.Lmin = Lmin
-        self.Lmax = Lmax
-        self.L_factor = L_factor
         self.max_steps = max_steps
         self.eta = eta
         self.sigma = 1e-5
