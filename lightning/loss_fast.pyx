@@ -26,6 +26,30 @@ cdef extern from "float.h":
    double DBL_MAX
 
 
+cdef double _l2_norm_sums(Dataset X, int squared):
+        cdef int i, j, jj
+        cdef int n_samples = X.get_n_samples()
+        cdef double norm, G = 0
+
+        cdef double* data
+        cdef int* indices
+        cdef int n_nz
+
+        for i in xrange(n_samples):
+            X.get_row_ptr(i, &indices, &data, &n_nz)
+
+            norm = 0
+            for jj in xrange(n_nz):
+                norm += data[jj] * data[jj]
+
+            if squared:
+                G += norm
+            else:
+                G += sqrt(norm)
+
+        return G
+
+
 cdef class SquaredHinge:
 
     cpdef gradient(self,
@@ -129,3 +153,5 @@ cdef class MulticlassSquaredHinge:
 
         return obj
 
+    cpdef double max_gradient(self, Dataset X, int n_vectors):
+        return 4 * (n_vectors - 1) * _l2_norm_sums(X, True)
