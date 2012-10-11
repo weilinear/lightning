@@ -9,30 +9,10 @@ from sklearn.utils import check_random_state
 from sklearn.utils.extmath import safe_sparse_dot
 
 from .base import BaseClassifier
-from .sparsa_fast import SquaredHinge
-from .sparsa_fast import MulticlassSquaredHinge
-
-
-class L1Penalty(object):
-
-    def projection(self, coef, alpha, L):
-        return np.sign(coef) * np.maximum(np.abs(coef) - alpha / L, 0)
-
-    def regularization(self, coef):
-        return np.sum(np.abs(coef))
-
-
-class L1L2Penalty(object):
-
-    def projection(self, coef, alpha, L):
-        n_features = coef.shape[1]
-        l2norms = np.sqrt(np.sum(coef ** 2, axis=0))
-        scales = np.maximum(1.0 - alpha / (L * l2norms), 0)
-        coef *= scales
-        return coef
-
-    def regularization(self, coef):
-        return np.sum(np.sqrt(np.sum(coef ** 2, axis=0)))
+from .loss_fast import SquaredHinge
+from .loss_fast import MulticlassSquaredHinge
+from .penalty import L1Penalty
+from .penalty import L1L2Penalty
 
 
 class SparsaClassifier(BaseClassifier, ClassifierMixin):
